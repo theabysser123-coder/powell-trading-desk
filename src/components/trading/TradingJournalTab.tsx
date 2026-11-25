@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AreaSeries, ColorType, createChart, type UTCTimestamp } from "lightweight-charts";
+import { AreaSeries, ColorType, CrosshairMode, LineStyle, LineType, createChart, type UTCTimestamp } from "lightweight-charts";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { TradingJournalsData } from "./types.ts";
 
@@ -9,51 +9,106 @@ interface Props {
 
 export function TradingJournalTab({ data }: Props) {
   const eqRef = useRef<HTMLDivElement | null>(null);
+  const eqLegendRef = useRef<HTMLSpanElement | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!data?.equity_curve_80d?.length || !eqRef.current) return;
     const chart = createChart(eqRef.current, {
       width: eqRef.current.clientWidth,
-      height: 170,
+      height: 184,
       layout: {
-        background: { type: ColorType.Solid, color: "#121212" },
-        textColor: "#8a8a8e",
+        background: { type: ColorType.Solid, color: "#101012" },
+        textColor: "#7c7c82",
         fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
         fontSize: 10,
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(245,245,245,0.03)" },
-        horzLines: { color: "rgba(245,245,245,0.045)" },
+        vertLines: { visible: false },
+        horzLines: { color: "rgba(255, 255, 255, 0.028)", style: LineStyle.Solid },
       },
-      rightPriceScale: { borderColor: "rgba(245,245,245,0.08)" },
-      timeScale: { borderColor: "rgba(245,245,245,0.08)" },
+      crosshair: {
+        mode: CrosshairMode.Magnet,
+        vertLine: {
+          color: "rgba(255, 255, 255, 0.18)",
+          width: 1,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: "#242428",
+        },
+        horzLine: {
+          color: "rgba(255, 255, 255, 0.14)",
+          width: 1,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: "#242428",
+        },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        ticksVisible: false,
+        entireTextOnly: true,
+        scaleMargins: { top: 0.14, bottom: 0.12 },
+      },
+      timeScale: {
+        borderVisible: false,
+        ticksVisible: false,
+        rightOffset: 3,
+      },
+      kineticScroll: { mouse: true, touch: true },
     });
 
     const area = chart.addSeries(AreaSeries, {
-      lineColor: "#38d591",
-      topColor: "rgba(56, 213, 145, 0.24)",
-      bottomColor: "rgba(56, 213, 145, 0.01)",
+      lineColor: "#26c485",
+      topColor: "rgba(38, 196, 133, 0.24)",
+      bottomColor: "rgba(38, 196, 133, 0.0)",
       lineWidth: 2,
+      lineType: LineType.Curved,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+      crosshairMarkerBorderColor: "#101012",
+      crosshairMarkerBackgroundColor: "#26c485",
+      priceLineVisible: false,
+      lastValueVisible: true,
+      priceFormat: {
+        type: "custom",
+        formatter: (v: number) => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`,
+      },
     });
 
     const seen = new Set<number>();
+    const metaByTime = new Map<number, { date: string; cum: number; day: number }>();
     const pts = data.equity_curve_80d
       .map((row) => ({
         time: Math.floor(new Date(`${row.date}T16:00:00Z`).getTime() / 1000) as UTCTimestamp,
         value: row.cum_v7_base_usd,
+        date: row.date,
+        day: row.day_usd,
       }))
       .sort((a, b) => Number(a.time) - Number(b.time))
       .filter((p) => {
         const k = Number(p.time);
         if (seen.has(k)) return false;
         seen.add(k);
+        metaByTime.set(k, { date: p.date, cum: p.value, day: p.day });
         return true;
       });
 
-    area.setData(pts);
+    area.setData(pts.map(({ time, value }) => ({ time, value })));
     chart.timeScale().fitContent();
+
+    const lastPt = pts[pts.length - 1];
+    const renderLegend = (entry: { date: string; cum: number; day: number } | undefined) => {
+      if (!eqLegendRef.current || !entry) return;
+      const sign = entry.cum >= 0 ? "+" : "-";
+      eqLegendRef.current.textContent = `${entry.date} · ${sign}$${Math.abs(entry.cum).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    };
+    renderLegend(lastPt ? { date: lastPt.date, cum: lastPt.value, day: lastPt.day } : undefined);
+
+    chart.subscribeCrosshairMove((param) => {
+      const t = typeof param.time === "number" ? param.time : null;
+      const entry = t !== null ? metaByTime.get(t) : lastPt ? { date: lastPt.date, cum: lastPt.value, day: lastPt.day } : undefined;
+      renderLegend(entry);
+    });
 
     const ro = new ResizeObserver(() => {
       if (eqRef.current) chart.applyOptions({ width: eqRef.current.clientWidth });
@@ -100,10 +155,10 @@ export function TradingJournalTab({ data }: Props) {
       )}
 
       {/* Equity Curve */}
-      <div className="overflow-hidden rounded-xl border border-edge bg-app">
-        <div className="flex items-center justify-between border-b border-edge px-3.5 py-2">
+      <div className="overflow-hidden rounded-xl border border-edge bg-[#101012]">
+        <div className="flex items-center justify-between border-b border-edge/60 px-3.5 py-2">
           <span className="text-[12px] font-medium text-ink">80-Day Blind Equity</span>
-          <span className="text-[11px] text-ink-tertiary">Set E + Bulk40 + Set F</span>
+          <span ref={eqLegendRef} className="font-mono text-[11px] text-ink-secondary">Set E + Bulk40 + Set F</span>
         </div>
         <div ref={eqRef} className="w-full" />
       </div>
