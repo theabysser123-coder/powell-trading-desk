@@ -21,6 +21,7 @@ import { useFestivalDress, wornBody } from "@/lib/festival-dress";
 import { t } from "@/lib/i18n";
 import { CarvedAvatar, vivid } from "./CarvedAvatar";
 import { ObjectAvatar } from "./ObjectAvatar";
+import { steelBodyImage } from "@/lib/steel-body";
 
 export const EYE_SCALE = 1.12;
 export const MOUTH_WEIGHT = 11;
@@ -220,7 +221,7 @@ function GradientAvatarComponent(
         size={size}
         silhouette={silhouette}
         gradient={paint}
-        picture={null}
+        picture={chrome && !faceInk ? steelBodyImage(silhouette.id, size, globalThis.devicePixelRatio ?? 1) : null}
         eyeColor={faceInk ?? (chrome ? CHROME_EYES : undefined)}
         title={label ?? null}
         lookAround={lookAround ?? (forward ? 0 : 1)}
