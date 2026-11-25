@@ -145,17 +145,27 @@ export function ensureTradingDeskBots(store: Store): BotRecord[] {
     // ignore if config is read-only
   }
 
-  // Upgrade Chief of Staff (MausBot) from legacy Flash default & ensure Full access on all desk bots.
+  // Upgrade Chief of Staff ("MausBot" -> "Head of Desk") & ensure Full access + Neon default on all desk bots.
   const deskNames = new Set(TRADING_DESK_BOTS.map((s) => s.name.toLowerCase()));
   for (const bot of store.bots) {
     const isDesk = deskNames.has(bot.name.trim().toLowerCase());
     const patch: Partial<BotRecord> = {};
-    if (
-      bot.chiefOfStaff &&
-      bot.modelSelection?.instanceId === "antigravity" &&
-      bot.modelSelection.model === "gemini-3.8-flash"
-    ) {
-      patch.modelSelection = { ...DEFAULT_NEON };
+    if (bot.chiefOfStaff) {
+      if (bot.name.trim() === "MausBot") {
+        patch.name = "Head of Desk";
+      }
+      if (!bot.title?.trim()) {
+        patch.title = "Trading Desk PM · Powell v7";
+      }
+      if (!bot.mascotExpression) {
+        patch.mascotExpression = "sad";
+      }
+      if (
+        bot.modelSelection?.instanceId === "antigravity" &&
+        bot.modelSelection.model === "gemini-3.8-flash"
+      ) {
+        patch.modelSelection = { ...DEFAULT_NEON };
+      }
     }
     if ((isDesk || bot.chiefOfStaff) && bot.approvalMode !== "full") {
       patch.approvalMode = "full";
