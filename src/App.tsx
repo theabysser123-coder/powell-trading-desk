@@ -4,13 +4,10 @@ import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useStore } from "@/state/s
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
-import { MausBotWelcome } from "@/components/MausBotWelcome";
 import { NewBotNameHost } from "@/components/NewBotName";
 import { MemberApps } from "@/components/MemberApps";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
-import { cloudSignInDue, noEnginesDue, spotlightsQuiet, workedEarlier, type WelcomeViewer } from "@/lib/onboarding";
-import { FirstConversationTour } from "@/components/onboarding/FirstConversationTour";
-import { GuidedTour } from "@/components/onboarding/GuidedTour";
+import { cloudSignInDue, noEnginesDue, workedEarlier, type WelcomeViewer } from "@/lib/onboarding";
 import { LiveCallHost } from "@/components/LiveCallHost";
 import { ThreadRefsProvider } from "@/components/ThreadRefs";
 import { initAnalytics } from "@/lib/analytics";
@@ -40,8 +37,6 @@ import { closeFilePreview, useFilePreview } from "@/lib/file-preview";
 import { WorkspaceBackupRecovery } from "@/components/WorkspaceBackupRecovery";
 import { NotificationRail, NotificationsPanel } from "@/components/NotificationsPanel";
 import { useNotificationFeed } from "@/lib/notification-preferences";
-import { UpdateBanner } from "@/components/UpdateBanner";
-import { AppNotices } from "@/components/AppNotices";
 import { CliLoginCard } from "@/components/CliLoginCard";
 import { AppGrantNotice } from "@/components/AppGrantPrompt";
 import { BotLimitPopup } from "@/components/BotLimitPopup";
@@ -385,12 +380,10 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   // The sidebar is on screen, so its update button is too. In Simple that button is the one; the top bar leaves its own out.
   const sidebarShown = !calendarFocus && (sidebarInline || drawerOpen);
   const strips = <>
-    <UpdateBanner sidebarIndicator={framed || sidebarShown} />
     <CloudAsleepStrip />
     <LiveConnectionStrip connected={state.connected} hydrated={state.hydrated === true} />
     <CloudSendStrip cloudHome={state.config?.cloudHome === true} />
     <HomeLine />
-    <AppNotices quiet={paletteOpen || drawerOpen || Boolean(localVmWorkspaceBotId)} viewer={viewer} />
     <CliLoginCard />
   </>;
   return (
@@ -567,12 +560,9 @@ function Application() {
           <Shell viewer={viewer} />
         </ThreadRefsProvider>
         <WelcomeGate viewer={viewer} />
-        <MausBotWelcome viewer={viewer} />
         <NewBotNameHost />
         <CloudTimeZoneSync viewer={viewer} />
-        <GuidedTour />
         <LiveCallHost />
-        <FirstConversationTour quiet={spotlightsQuiet(viewer)} />
       </StoreProvider>
     </DesktopCapabilitiesProvider>
   );
