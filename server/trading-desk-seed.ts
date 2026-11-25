@@ -1,7 +1,14 @@
 // Seeds the 3 Powell Model v7 AI Trading Desk specialist bots once on local startup.
+import { loadConfig, saveConfig } from "./config.ts";
 import type { BotRecord, Store } from "./store.ts";
 
 const POWELL_DIR = process.env.POWELL_BACKTEST_DIR || "/home/nebula/.gemini/antigravity/scratch/powell-backtest";
+
+const DEFAULT_NEON = {
+  instanceId: "antigravity",
+  model: "gemini-4-neon",
+  variant: "medium",
+} as const;
 
 type DeskColor = "green" | "orange" | "cyan";
 
@@ -68,6 +75,27 @@ const TRADING_DESK_BOTS: readonly DeskBotSpec[] = [
 ];
 
 export function ensureTradingDeskBots(store: Store): BotRecord[] {
+  // Ensure global default model for new bots is Gemini 4 Neon (Medium).
+  try {
+    const cfg = loadConfig();
+    if (!cfg.defaultModelSelection) {
+      saveConfig({ defaultModelSelection: { ...DEFAULT_NEON } });
+    }
+  } catch {
+    // ignore if config is read-only
+  }
+
+  // Upgrade the Chief of Staff (MausBot) from legacy Flash default to Gemini 4 Neon (Medium).
+  for (const bot of store.bots) {
+    if (
+      bot.chiefOfStaff &&
+      bot.modelSelection?.instanceId === "antigravity" &&
+      bot.modelSelection.model === "gemini-3.8-flash"
+    ) {
+      store.patchBot(bot.id, { modelSelection: { ...DEFAULT_NEON } });
+    }
+  }
+
   const existing = new Set(store.bots.map((b) => b.name.trim().toLowerCase()));
   const created: BotRecord[] = [];
   for (const spec of TRADING_DESK_BOTS) {
@@ -81,11 +109,7 @@ export function ensureTradingDeskBots(store: Store): BotRecord[] {
         color: spec.color,
         section: "Trading Desk",
         cwd: POWELL_DIR,
-        modelSelection: {
-          instanceId: "antigravity",
-          model: "gemini-4-neon",
-          variant: "medium",
-        },
+        modelSelection: { ...DEFAULT_NEON },
       },
       { seedMessages: false },
     );
