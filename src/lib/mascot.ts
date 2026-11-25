@@ -161,43 +161,17 @@ export function stateForBot(bot: MascotBotProfile): MausState {
   const pinned = normalizeState(bot.mascotExpression);
   if (pinned) return pinned;
 
+  const lowerName = bot.name.trim().toLowerCase();
+  if (lowerName.includes("powell")) return "drowsy";
+  if (lowerName.includes("risk") || lowerName.includes("guardian")) return "sad";
+  if (lowerName.includes("journal") || lowerName.includes("replay")) return "sleeping";
+
   const last = lastNonReceipt(bot.messages);
 
-  if (isFailedStep(last)) return "alerting";
-  if (bot.busy) return "working";
-  if (botShowsUnread(bot)) return "notifying";
-  if (last?.kind === "options") return "curious";
+  if (isFailedStep(last)) return "sad";
+  if (bot.busy) return "drowsy";
+  if (botShowsUnread(bot)) return "drowsy";
+  if (last?.kind === "options") return "drowsy";
 
-  const profile = `${bot.name} ${bot.title ?? ""} ${bot.description ?? ""}`.toLowerCase();
-  const matches = (words: RegExp) => words.test(profile);
-
-  if (matches(/\b(code|coding|developer|development|engineer|engineering|build|debug|program|software)\b/)) {
-    return "working";
-  }
-  if (matches(/\b(research|researcher|search|investigate|strategy|strategist|study|learn|knowledge)\b/)) {
-    return "searching";
-  }
-  if (matches(/\b(marketing|growth|launch|campaign|social|sales|outreach|brand)\b/)) {
-    return "excited";
-  }
-  if (matches(/\b(overnight|night|background|async|queue|batch|long-running)\b/)) {
-    return "drowsy";
-  }
-  if (matches(/\b(monitor|monitoring|incident|alert|watch|status|uptime)\b/)) {
-    return "radar";
-  }
-  if (matches(/\b(review|reviewer|audit|critic|critique|quality|qa|test|legal)\b/)) {
-    return "suspicious";
-  }
-  if (matches(/\b(security|secure|compliance|risk|privacy|finance|financial)\b/)) {
-    return "scared";
-  }
-  if (matches(/\b(design|designer|creative|brainstorm|art|illustration|music|story)\b/)) {
-    return "playful";
-  }
-  if (matches(/\b(support|help|success|onboarding|coach|teacher|guide|welcome)\b/)) {
-    return "happy";
-  }
-
-  return "idle";
+  return "drowsy";
 }
