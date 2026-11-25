@@ -525,6 +525,7 @@ export interface AppState {
   pluginsSurface: "apps" | "mcp";
   botCreationPending: boolean;
   computerOpen: boolean;
+  tradingDeskOpen: boolean;
   inspectorOpen: boolean;
   forkPanel: ForkPanelState | null;
   activityOpen: boolean;
@@ -735,6 +736,7 @@ export type Action =
   | { type: "toggleSettings"; open?: boolean; section?: BotSettingsSection; botId?: string }
   | { type: "togglePlugins"; open?: boolean; surface?: "apps" | "mcp" }
   | { type: "toggleComputer"; open?: boolean; botId?: string }
+  | { type: "toggleTradingDesk"; open?: boolean }
   | { type: "openDataResult"; botId: string; cardId: string }
   | { type: "dataResultFocusConsumed"; requestId: number }
   | { type: "openSignIn"; botId: string; messageId: string; url: string; site: string; place: import("../../shared/wire").Surface; expand?: boolean; threadId?: string }
@@ -934,6 +936,7 @@ function reduceApp(state: AppState, action: Action): AppState {
         routinesFocus: { section: action.section, view: action.view, botId: action.botId, routineId: action.routineId, runStatus: action.runStatus, nonce: state.routinesFocus.nonce + 1 },
         settingsOpen: false,
         computerOpen: false,
+  tradingDeskOpen: true,
         inspectorOpen: false,
         activityOpen: false,
         notificationsOpen: false,
@@ -1436,6 +1439,20 @@ function reduceApp(state: AppState, action: Action): AppState {
       return {
         ...state, selectedId: action.botId !== undefined && state.bots.some((bot) => bot.id === action.botId) ? action.botId : state.selectedId,
         computerOpen: open,
+        tradingDeskOpen: open ? false : state.tradingDeskOpen,
+        settingsOpen: open ? false : state.settingsOpen,
+        inspectorOpen: open ? false : state.inspectorOpen,
+        activityOpen: open ? false : state.activityOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        notificationsOpen: open && !state.notificationsPinned ? false : state.notificationsOpen,
+      };
+    }
+    case "toggleTradingDesk": {
+      const open = action.open ?? !state.tradingDeskOpen;
+      return {
+        ...state,
+        tradingDeskOpen: open,
+        computerOpen: open ? false : state.computerOpen,
         settingsOpen: open ? false : state.settingsOpen,
         inspectorOpen: open ? false : state.inspectorOpen,
         activityOpen: open ? false : state.activityOpen,
@@ -1823,6 +1840,7 @@ export const initialState: AppState = {
   pluginsSurface: "apps",
   botCreationPending: false,
   computerOpen: false,
+  tradingDeskOpen: true,
   inspectorOpen: false,
   forkPanel: null,
   activityOpen: false,

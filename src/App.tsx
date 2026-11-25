@@ -23,6 +23,7 @@ import { ChatView } from "@/components/ChatView";
 import { HandoffExchangeHost } from "@/components/HandoffExchange";
 import { GroupView } from "@/components/GroupView";
 import { ForkPanel } from "@/components/ForkPanel";
+import { TradingDeskPanel } from "@/components/trading/TradingDeskPanel";
 import { RoomFeedView } from "@/components/room-feed/RoomFeedView";
 import { useRoomFeed } from "@/components/room-feed/use-room-feed";
 import { PHONE_LAYOUT, SIDEBAR_AND_BOT_PANEL_FIT, SIDEBAR_AND_NARROW_PANEL_FIT, SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, TWO_SIDE_PANELS_FIT, useMediaQuery } from "@/lib/use-media-query";
@@ -503,6 +504,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
           />
         )
       )}
+      {state.tradingDeskOpen && <TradingDeskPanel />}
       <AppPreviewPanel />
       <FilePreviewPanel threadId={group?.threadId ?? bot?.threadId} />
       {state.forkPanel && sidebarInline && <ForkPanel />}

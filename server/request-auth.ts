@@ -342,6 +342,8 @@ export const CLIENT_ALLOW: ReadonlyArray<{ methods: readonly string[]; path: Reg
   { methods: ["GET"], path: /^\/api\/edition$/ },
   { methods: ["GET"], path: /^\/api\/brand$/ },
   { methods: ["GET"], path: /^\/api\/events$/ },
+  // Local Powell Model v7 / Topstep $50K Trading Desk endpoints
+  { methods: ["GET", "POST"], path: /^\/api\/trading(?:\/[\w-]+)*$/ },
   // reads that carry no secrets
   { methods: ["GET"], path: /^\/api\/bots$/ },
   { methods: ["GET"], path: /^\/api\/bots\/[\w-]+$/ },

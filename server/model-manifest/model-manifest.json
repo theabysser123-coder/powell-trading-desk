@@ -140,8 +140,32 @@
       ]
     },
     "antigravity": {
-      "default": "gemini-3.8-flash",
+      "default": "gemini-4-neon",
       "models": [
+        {
+          "id": "gemini-4-neon",
+          "name": "Gemini 4 Neon",
+          "status": "current",
+          "aliases": [
+            "gemini-4-neon-high",
+            "gemini-4-neon-medium",
+            "gemini-4-neon-low"
+          ],
+          "variants": [
+            {
+              "id": "low",
+              "label": "Low"
+            },
+            {
+              "id": "medium",
+              "label": "Medium"
+            },
+            {
+              "id": "high",
+              "label": "High"
+            }
+          ]
+        },
         {
           "id": "gemini-3.8-flash",
           "name": "Gemini 3.8 Flash",
