@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { useStore } from "@/state/store";
 import { TradingChartTab } from "./TradingChartTab.tsx";
@@ -8,10 +8,39 @@ import type { TradingChartData, TradingJournalsData, TradingState } from "./type
 
 type DeskTab = "chart" | "hud" | "journals";
 
+const DESK_WIDTH_KEY = "omb-trading-desk-width";
+const DESK_MIN_WIDTH = 360;
+const DESK_DEFAULT_WIDTH = 540;
+const CHAT_MIN_WIDTH = 300;
+const KEYBOARD_STEP = 40;
+
+function readStoredWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(DESK_WIDTH_KEY));
+    if (Number.isFinite(n) && n >= DESK_MIN_WIDTH) return Math.round(n);
+  } catch {
+    // ignore storage failures
+  }
+  return DESK_DEFAULT_WIDTH;
+}
+
+function saveStoredWidth(w: number) {
+  try {
+    localStorage.setItem(DESK_WIDTH_KEY, String(Math.round(w)));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export function TradingDeskPanel() {
   const { dispatch } = useStore();
   const [tab, setTab] = useState<DeskTab>("chart");
-  const [wide, setWide] = useState(false);
+  const [chosenWidth, setChosenWidth] = useState<number>(readStoredWidth);
+  const [maxWidth, setMaxWidth] = useState<number>(1100);
+  const [dragging, setDragging] = useState(false);
+  const asideRef = useRef<HTMLElement | null>(null);
+  const dragRef = useRef<{ startX: number; startWidth: number; latestWidth: number } | null>(null);
+  const restoreWidthRef = useRef<number>(DESK_DEFAULT_WIDTH);
   const [tf, setTf] = useState<number>(5);
   const [tradingState, setTradingState] = useState<TradingState | null>(null);
   const [chartData, setChartData] = useState<TradingChartData | null>(null);
@@ -19,6 +48,107 @@ export function TradingDeskPanel() {
   const [loadingChart, setLoadingChart] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+
+  const panelWidth = Math.max(DESK_MIN_WIDTH, Math.min(chosenWidth, maxWidth));
+  const isMaximized = maxWidth - panelWidth <= 24 && maxWidth > DESK_DEFAULT_WIDTH + 60;
+
+  useLayoutEffect(() => {
+    const panel = asideRef.current;
+    const row = panel?.parentElement;
+    if (!panel || !row) return;
+
+    const measure = () => {
+      const chat = row.querySelector<HTMLElement>(":scope > main");
+      if (chat && panel.offsetWidth > 0) {
+        const available = panel.offsetWidth + chat.offsetWidth - CHAT_MIN_WIDTH;
+        setMaxWidth(Math.max(DESK_MIN_WIDTH, Math.floor(available)));
+      } else {
+        setMaxWidth(Math.max(DESK_MIN_WIDTH, Math.floor(window.innerWidth * 0.78)));
+      }
+    };
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    const mo = new MutationObserver(measure);
+    mo.observe(row, { childList: true });
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [dragging]);
+
+  const clampWidth = useCallback(
+    (w: number) => Math.max(DESK_MIN_WIDTH, Math.min(maxWidth, Math.round(w))),
+    [maxWidth],
+  );
+
+  const onResizeStart = (e: PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: panelWidth, latestWidth: panelWidth };
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onResizeMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const next = clampWidth(dragRef.current.startWidth + (dragRef.current.startX - e.clientX));
+    dragRef.current.latestWidth = next;
+    setChosenWidth(next);
+  };
+
+  const onResizeEnd = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const finalWidth = dragRef.current.latestWidth;
+    dragRef.current = null;
+    setDragging(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    saveStoredWidth(finalWidth);
+  };
+
+  const onResizeDoubleClick = () => {
+    const next = clampWidth(DESK_DEFAULT_WIDTH);
+    setChosenWidth(next);
+    saveStoredWidth(next);
+  };
+
+  const onResizeKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const delta = e.key === "ArrowLeft" ? KEYBOARD_STEP : -KEYBOARD_STEP;
+    const next = clampWidth(panelWidth + delta);
+    setChosenWidth(next);
+    saveStoredWidth(next);
+  };
+
+  const toggleMaximize = () => {
+    if (isMaximized) {
+      const target = clampWidth(restoreWidthRef.current);
+      setChosenWidth(target);
+      saveStoredWidth(target);
+    } else {
+      restoreWidthRef.current = panelWidth;
+      setChosenWidth(maxWidth);
+      saveStoredWidth(maxWidth);
+    }
+  };
 
   const fetchState = useCallback(async (force = false) => {
     try {
@@ -129,11 +259,38 @@ export function TradingDeskPanel() {
 
   return (
     <aside
+      ref={asideRef}
       data-look="trading-desk"
-      className={`flex h-full shrink-0 flex-col border-l border-edge bg-panel transition-all ${
-        wide ? "w-[min(860px,64vw)]" : "w-[min(540px,46vw)]"
-      }`}
+      style={{ width: panelWidth }}
+      className="relative flex h-full shrink-0 flex-col border-l border-edge bg-panel max-md:w-full!"
     >
+      {/* Drag-to-resize handle on the left edge */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize Trading Desk"
+        aria-valuemin={DESK_MIN_WIDTH}
+        aria-valuemax={maxWidth}
+        aria-valuenow={panelWidth}
+        tabIndex={0}
+        title="Drag to resize · Double-click to reset"
+        onPointerDown={onResizeStart}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
+        onDoubleClick={onResizeDoubleClick}
+        onKeyDown={onResizeKeyDown}
+        className="group absolute inset-y-0 -left-1 z-20 flex w-2.5 cursor-col-resize touch-none items-center justify-center outline-none max-md:hidden"
+      >
+        <div
+          className={`h-full w-[2px] transition-colors ${
+            dragging
+              ? "bg-ink-secondary/70"
+              : "bg-transparent group-hover:bg-ink-tertiary/45 group-focus-visible:bg-ink-secondary/60"
+          }`}
+        />
+      </div>
+
       {/* Native-Style Header */}
       <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5">
         <div className="min-w-0">
@@ -157,11 +314,11 @@ export function TradingDeskPanel() {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setWide((w) => !w)}
+            onClick={toggleMaximize}
             className="flex size-8 items-center justify-center rounded-full text-ink-tertiary transition hover:bg-raised hover:text-ink"
-            title={wide ? "Compact width" : "Expand Trading Desk"}
+            title={isMaximized ? "Restore width" : "Expand Trading Desk"}
           >
-            {wide ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
           <button
             type="button"
@@ -218,7 +375,7 @@ export function TradingDeskPanel() {
       )}
 
       {/* Scrollable Body */}
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-edge">
+      <div className={`min-h-0 flex-1 overflow-y-auto border-t border-edge ${dragging ? "pointer-events-none" : ""}`}>
         {tab === "chart" && (
           <TradingChartTab
             chart={chartData}

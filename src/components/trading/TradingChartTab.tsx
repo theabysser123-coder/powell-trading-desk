@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   CandlestickSeries,
   ColorType,
@@ -17,6 +17,29 @@ interface Props {
   onTfChange: (tf: number) => void;
   onRefresh: () => void;
   positions: TradingPosition[];
+}
+
+const NQ_HEIGHT_KEY = "omb-trading-nq-height";
+const ES_HEIGHT_KEY = "omb-trading-es-height";
+const NQ_DEFAULT_HEIGHT = 320;
+const ES_DEFAULT_HEIGHT = 150;
+
+function readStoredHeight(key: string, min: number, max: number, fallback: number): number {
+  try {
+    const n = Number(localStorage.getItem(key));
+    if (Number.isFinite(n) && n >= min && n <= max) return Math.round(n);
+  } catch {
+    // ignore storage failures
+  }
+  return fallback;
+}
+
+function saveStoredHeight(key: string, value: number) {
+  try {
+    localStorage.setItem(key, String(Math.round(value)));
+  } catch {
+    // ignore storage failures
+  }
 }
 
 const CORE_LEVELS: Array<{ key: string; label: string; color: string; style: LineStyle }> = [
@@ -41,13 +64,58 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
   const [showAllLevels, setShowAllLevels] = useState(false);
   const [showRbs, setShowRbs] = useState(false);
   const [showSmt, setShowSmt] = useState(true);
+  const [nqHeight, setNqHeight] = useState<number>(() => readStoredHeight(NQ_HEIGHT_KEY, 180, 760, NQ_DEFAULT_HEIGHT));
+  const [esHeight, setEsHeight] = useState<number>(() => readStoredHeight(ES_HEIGHT_KEY, 96, 420, ES_DEFAULT_HEIGHT));
+  const [resizingChart, setResizingChart] = useState<"nq" | "es" | null>(null);
+  const chartDragRef = useRef<{ target: "nq" | "es"; startY: number; startH: number; latestH: number } | null>(null);
+
+  useEffect(() => {
+    if (!resizingChart) return;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [resizingChart]);
+
+  const startChartResize = (target: "nq" | "es") => (e: PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startH = target === "nq" ? nqHeight : esHeight;
+    chartDragRef.current = { target, startY: e.clientY, startH, latestH: startH };
+    setResizingChart(target);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const moveChartResize = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = chartDragRef.current;
+    if (!drag) return;
+    const [min, max] = drag.target === "nq" ? [180, 760] : [96, 420];
+    const next = Math.max(min, Math.min(max, Math.round(drag.startH + (e.clientY - drag.startY))));
+    drag.latestH = next;
+    if (drag.target === "nq") setNqHeight(next);
+    else setEsHeight(next);
+  };
+
+  const endChartResize = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = chartDragRef.current;
+    if (!drag) return;
+    chartDragRef.current = null;
+    setResizingChart(null);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    saveStoredHeight(drag.target === "nq" ? NQ_HEIGHT_KEY : ES_HEIGHT_KEY, drag.latestH);
+  };
 
   useEffect(() => {
     if (!chart || !chart.nq_candles.length || !nqHostRef.current) return;
 
-    const baseOpts = (el: HTMLDivElement, height: number) => ({
+    const baseOpts = (el: HTMLDivElement, fallbackHeight: number) => ({
       width: el.clientWidth,
-      height,
+      height: el.clientHeight || fallbackHeight,
       layout: {
         background: { type: ColorType.Solid, color: "#121212" },
         textColor: "#8a8a8e",
@@ -75,7 +143,7 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
       },
     });
 
-    const nqChart: IChartApi = createChart(nqHostRef.current, baseOpts(nqHostRef.current, showSmt ? 310 : 440));
+    const nqChart: IChartApi = createChart(nqHostRef.current, baseOpts(nqHostRef.current, NQ_DEFAULT_HEIGHT));
     const nqSeries = nqChart.addSeries(CandlestickSeries, {
       upColor: "#38d591",
       downColor: "#ff5667",
@@ -139,7 +207,7 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
 
     let esChart: IChartApi | null = null;
     if (showSmt && esHostRef.current && chart.es_candles.length) {
-      esChart = createChart(esHostRef.current, baseOpts(esHostRef.current, 148));
+      esChart = createChart(esHostRef.current, baseOpts(esHostRef.current, ES_DEFAULT_HEIGHT));
       const esSeries = esChart.addSeries(CandlestickSeries, {
         upColor: "#38d591",
         downColor: "#ff5667",
@@ -167,8 +235,12 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
     }
 
     const ro = new ResizeObserver(() => {
-      if (nqHostRef.current) nqChart.applyOptions({ width: nqHostRef.current.clientWidth });
-      if (esChart && esHostRef.current) esChart.applyOptions({ width: esHostRef.current.clientWidth });
+      if (nqHostRef.current && nqHostRef.current.clientWidth > 0 && nqHostRef.current.clientHeight > 0) {
+        nqChart.applyOptions({ width: nqHostRef.current.clientWidth, height: nqHostRef.current.clientHeight });
+      }
+      if (esChart && esHostRef.current && esHostRef.current.clientWidth > 0 && esHostRef.current.clientHeight > 0) {
+        esChart.applyOptions({ width: esHostRef.current.clientWidth, height: esHostRef.current.clientHeight });
+      }
     });
     ro.observe(nqHostRef.current);
     if (esHostRef.current) ro.observe(esHostRef.current);
@@ -256,7 +328,28 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
           </div>
           <span className="font-mono text-[10.5px] text-ink-tertiary">{chart?.cur_t_et ?? "Loading…"}</span>
         </div>
-        <div ref={nqHostRef} className="w-full" />
+        <div ref={nqHostRef} style={{ height: nqHeight }} className={`w-full ${resizingChart ? "pointer-events-none" : ""}`} />
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize MNQ chart height"
+          title="Drag to resize chart height · Double-click to reset"
+          onPointerDown={startChartResize("nq")}
+          onPointerMove={moveChartResize}
+          onPointerUp={endChartResize}
+          onPointerCancel={endChartResize}
+          onDoubleClick={() => {
+            setNqHeight(NQ_DEFAULT_HEIGHT);
+            saveStoredHeight(NQ_HEIGHT_KEY, NQ_DEFAULT_HEIGHT);
+          }}
+          className="group flex h-2.5 cursor-row-resize touch-none items-center justify-center border-t border-edge/60 bg-app transition hover:bg-raised/40"
+        >
+          <span
+            className={`h-[2px] w-8 rounded-full transition-colors ${
+              resizingChart === "nq" ? "bg-ink-secondary/70" : "bg-edge group-hover:bg-ink-tertiary/60"
+            }`}
+          />
+        </div>
       </div>
 
       {/* Synchronized ES SMT Chart */}
@@ -266,7 +359,28 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
             <span className="text-[11.5px] font-medium text-ink-secondary">{chart?.contracts.es_name ?? "ESZ6"}</span>
             <span className="text-[10.5px] text-ink-tertiary">Synchronized SMT</span>
           </div>
-          <div ref={esHostRef} className="w-full" />
+          <div ref={esHostRef} style={{ height: esHeight }} className={`w-full ${resizingChart ? "pointer-events-none" : ""}`} />
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize ES SMT chart height"
+            title="Drag to resize SMT height · Double-click to reset"
+            onPointerDown={startChartResize("es")}
+            onPointerMove={moveChartResize}
+            onPointerUp={endChartResize}
+            onPointerCancel={endChartResize}
+            onDoubleClick={() => {
+              setEsHeight(ES_DEFAULT_HEIGHT);
+              saveStoredHeight(ES_HEIGHT_KEY, ES_DEFAULT_HEIGHT);
+            }}
+            className="group flex h-2.5 cursor-row-resize touch-none items-center justify-center border-t border-edge/60 bg-app transition hover:bg-raised/40"
+          >
+            <span
+              className={`h-[2px] w-8 rounded-full transition-colors ${
+                resizingChart === "es" ? "bg-ink-secondary/70" : "bg-edge group-hover:bg-ink-tertiary/60"
+              }`}
+            />
+          </div>
         </div>
       )}
 
