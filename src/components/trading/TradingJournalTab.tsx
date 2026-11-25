@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AreaSeries, ColorType, createChart, type UTCTimestamp } from "lightweight-charts";
-import { Award, ChevronDown, ChevronRight, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { TradingJournalsData } from "./types.ts";
 
 interface Props {
@@ -15,29 +15,29 @@ export function TradingJournalTab({ data }: Props) {
     if (!data?.equity_curve_80d?.length || !eqRef.current) return;
     const chart = createChart(eqRef.current, {
       width: eqRef.current.clientWidth,
-      height: 175,
+      height: 170,
       layout: {
-        background: { type: ColorType.Solid, color: "#0c1017" },
-        textColor: "#94a3b8",
-        fontFamily: "var(--font-mono), ui-monospace, monospace",
+        background: { type: ColorType.Solid, color: "#121212" },
+        textColor: "#8a8a8e",
+        fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
         fontSize: 10,
+        attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(148,163,184,0.06)" },
-        horzLines: { color: "rgba(148,163,184,0.08)" },
+        vertLines: { color: "rgba(245,245,245,0.03)" },
+        horzLines: { color: "rgba(245,245,245,0.045)" },
       },
-      rightPriceScale: { borderColor: "rgba(148,163,184,0.16)" },
-      timeScale: { borderColor: "rgba(148,163,184,0.16)" },
+      rightPriceScale: { borderColor: "rgba(245,245,245,0.08)" },
+      timeScale: { borderColor: "rgba(245,245,245,0.08)" },
     });
 
     const area = chart.addSeries(AreaSeries, {
-      lineColor: "#10b981",
-      topColor: "rgba(16, 185, 129, 0.35)",
-      bottomColor: "rgba(16, 185, 129, 0.02)",
+      lineColor: "#38d591",
+      topColor: "rgba(56, 213, 145, 0.24)",
+      bottomColor: "rgba(56, 213, 145, 0.01)",
       lineWidth: 2,
     });
 
-    // Deduplicate ascending unix dates for lightweight-charts
     const seen = new Set<number>();
     const pts = data.equity_curve_80d
       .map((row) => ({
@@ -69,103 +69,108 @@ export function TradingJournalTab({ data }: Props) {
   const champOos = data?.backtest?.champion_setF_oos;
 
   return (
-    <div className="flex flex-col gap-3 p-3">
-      {/* 80-Day Champion Verified Benchmark */}
+    <div className="flex flex-col gap-3.5 p-4">
+      {/* 80-Day Benchmark KPIs */}
       {champ80 && (
-        <div className="rounded-xl border border-hairline/40 bg-card p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
-              <TrendingUp size={13} /> 80-Day Blind Champion (18pt → 45pt + Ladder)
-            </span>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-edge bg-card p-3">
+            <div className="text-[11px] text-ink-tertiary">80d Champion</div>
+            <div className="mt-1 font-mono text-[14px] font-semibold text-success">
+              +${champ80.total_usd.toLocaleString()}
+            </div>
+            <div className="mt-0.5 font-mono text-[10.5px] text-ink-tertiary">
+              PF {champ80.pf} · {champ80.wr_pct}%
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 font-mono">
-            <div className="rounded-lg bg-inset p-2">
-              <div className="text-[10px] text-ink-tertiary">80d Net ($500)</div>
-              <div className="text-[13px] font-bold text-success">+${champ80.total_usd.toLocaleString()}</div>
-              <div className="text-[10px] text-ink-secondary">PF {champ80.pf} · {champ80.wr_pct}% WR</div>
+          <div className="rounded-xl border border-edge bg-card p-3">
+            <div className="text-[11px] text-ink-tertiary">Set F OOS</div>
+            <div className="mt-1 font-mono text-[14px] font-semibold text-success">
+              +${(champOos?.total_usd ?? 4999).toLocaleString()}
             </div>
-            <div className="rounded-lg bg-inset p-2">
-              <div className="text-[10px] text-ink-tertiary">Strict OOS (20d)</div>
-              <div className="text-[13px] font-bold text-success">
-                +${(champOos?.total_usd ?? 4999).toLocaleString()}
-              </div>
-              <div className="text-[10px] text-ink-secondary">PF {champOos?.pf ?? 2.72} · DD -${Math.abs(champOos?.max_dd_eod ?? 1204).toFixed(0)}</div>
+            <div className="mt-0.5 font-mono text-[10.5px] text-ink-tertiary">
+              PF {champOos?.pf ?? 2.72} · -${Math.abs(champOos?.max_dd_eod ?? 1204).toFixed(0)}
             </div>
-            <div className="rounded-lg bg-inset p-2">
-              <div className="text-[10px] text-ink-tertiary">Topstep $50K MC</div>
-              <div className="text-[13px] font-bold text-sky-300">92.2% Pass</div>
-              <div className="text-[10px] text-ink-secondary">86.4% 0-Reset P1</div>
-            </div>
+          </div>
+          <div className="rounded-xl border border-edge bg-card p-3">
+            <div className="text-[11px] text-ink-tertiary">Topstep MC</div>
+            <div className="mt-1 font-mono text-[14px] font-semibold text-ink">92.2%</div>
+            <div className="mt-0.5 font-mono text-[10.5px] text-ink-tertiary">86.4% 0-reset P1</div>
           </div>
         </div>
       )}
 
-      {/* 80-Day Equity Curve */}
-      <div className="overflow-hidden rounded-xl border border-hairline/40 bg-[#0c1017]">
-        <div className="flex items-center justify-between border-b border-hairline/25 px-3 py-1.5 font-mono text-[10px] text-ink-secondary">
-          <span className="font-semibold text-ink">80 Unseen Days Baseline Equity Curve</span>
-          <span>Set E + Bulk40 + Set F</span>
+      {/* Equity Curve */}
+      <div className="overflow-hidden rounded-xl border border-edge bg-app">
+        <div className="flex items-center justify-between border-b border-edge px-3.5 py-2">
+          <span className="text-[12px] font-medium text-ink">80-Day Blind Equity</span>
+          <span className="text-[11px] text-ink-tertiary">Set E + Bulk40 + Set F</span>
         </div>
         <div ref={eqRef} className="w-full" />
       </div>
 
-      {/* Topstep Payout Roadmap */}
-      <div className="rounded-xl border border-hairline/40 bg-card p-3">
-        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-secondary">
-          <Award size={13} className="text-amber-300" /> Scaling & Payout Roadmap (DE Eligible)
+      {/* Scaling Roadmap */}
+      <div className="rounded-xl border border-edge bg-card">
+        <div className="flex items-center justify-between border-b border-edge px-4 py-2.5">
+          <span className="text-[12px] font-medium text-ink">Scaling Roadmap</span>
+          <span className="text-[11px] text-ink-tertiary">DE Eligible</span>
         </div>
-        <div className="flex flex-col gap-1.5 font-mono text-[11px]">
-          <div className="flex items-center justify-between rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-1.5">
-            <span className="font-semibold text-emerald-300">1. Active: $50K Combine (12 MNQ)</span>
-            <span className="text-ink-secondary">Med 14d · Target +$3,000</span>
+        <div className="divide-y divide-edge text-[12px]">
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <span className="flex items-center gap-2 font-medium text-ink">
+              <span className="size-1.5 rounded-full bg-success" />
+              1. $50K Combine (12 MNQ)
+            </span>
+            <span className="font-mono text-[11px] text-ink-secondary">Med 14d · +$3k</span>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-inset px-2.5 py-1.5 text-ink-secondary">
-            <span>2. XFA Payout #1 (5d ≥ $150 &amp; ≥ $2,500)</span>
-            <span>Med ~$1,527 net</span>
+          <div className="flex items-center justify-between px-4 py-2.5 text-ink-secondary">
+            <span>2. XFA Payout #1 (5d ≥ $150 &amp; ≥ $2.5k)</span>
+            <span className="font-mono text-[11px] text-ink-tertiary">~$1,527 net</span>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-inset px-2.5 py-1.5 text-ink-secondary">
-            <span>3. Scale to 5× Topstep XFAs (Copy)</span>
-            <span>$10K–$35K/mo (up to $200K)</span>
+          <div className="flex items-center justify-between px-4 py-2.5 text-ink-secondary">
+            <span>3. 5× Topstep XFAs (Copy)</span>
+            <span className="font-mono text-[11px] text-ink-tertiary">$10k–$35k/mo</span>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-inset px-2.5 py-1.5 text-ink-secondary">
-            <span>4. Personal CME Account (100% split)</span>
-            <span>5–20 NQ · No Caps</span>
+          <div className="flex items-center justify-between px-4 py-2.5 text-ink-secondary">
+            <span>4. Personal CME Account</span>
+            <span className="font-mono text-[11px] text-ink-tertiary">5–20 NQ · No caps</span>
           </div>
         </div>
       </div>
 
-      {/* Live Daily Journals */}
-      <div className="rounded-xl border border-hairline/40 bg-card p-3">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-secondary">
-          Live Session Journals ({data?.live_journals.length ?? 0})
+      {/* Live Journals */}
+      <div className="rounded-xl border border-edge bg-card">
+        <div className="flex items-center justify-between border-b border-edge px-4 py-2.5">
+          <span className="text-[12px] font-medium text-ink">Live Journals</span>
+          <span className="font-mono text-[11px] text-ink-tertiary">{data?.live_journals.length ?? 0} days</span>
         </div>
         {!data?.live_journals.length ? (
-          <div className="text-[11px] text-ink-tertiary">No live journals archived yet.</div>
+          <div className="px-4 py-3 text-[12px] text-ink-tertiary">No live journals yet.</div>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="divide-y divide-edge">
             {data.live_journals.map((j) => {
               const open = expandedDate === j.date;
               return (
-                <div key={j.date} className="rounded-lg border border-hairline/30 bg-inset">
+                <div key={j.date}>
                   <button
                     type="button"
                     onClick={() => setExpandedDate(open ? null : j.date)}
-                    className="flex w-full items-center justify-between px-2.5 py-2 text-left font-mono text-[11px]"
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left text-[12px] transition hover:bg-raised/40"
                   >
-                    <div className="flex items-center gap-1.5">
-                      {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                      <span className="font-semibold text-ink">{j.date}</span>
-                      <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-ink-secondary uppercase">{j.outcome}</span>
-                      <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">Grade {j.grade}</span>
+                    <div className="flex items-center gap-2">
+                      {open ? <ChevronDown size={13} className="text-ink-tertiary" /> : <ChevronRight size={13} className="text-ink-tertiary" />}
+                      <span className="font-mono font-medium text-ink">{j.date}</span>
+                      <span className="text-[11px] capitalize text-ink-tertiary">
+                        {j.outcome} · {j.grade}
+                      </span>
                     </div>
-                    <span className={j.realized_pnl_usd >= 0 ? "text-success" : "text-danger"}>
+                    <span className={`font-mono text-[12px] ${j.realized_pnl_usd >= 0 ? "text-success" : "text-danger"}`}>
                       {j.realized_pnl_usd >= 0 ? "+" : ""}${j.realized_pnl_usd.toFixed(2)}
                     </span>
                   </button>
                   {open && (
-                    <div className="border-t border-hairline/25 px-3 py-2 text-[11px] text-ink-secondary">
-                      <p className="mb-1.5 text-ink">{j.summary}</p>
-                      <p className="text-[10px] text-ink-tertiary"><strong>Lessons:</strong> {j.lessons}</p>
+                    <div className="border-t border-edge bg-inset/60 px-4 py-3 text-[12px] leading-relaxed text-ink-secondary">
+                      <p className="text-ink">{j.summary}</p>
+                      <p className="mt-2 text-[11px] text-ink-tertiary">{j.lessons}</p>
                     </div>
                   )}
                 </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, BookOpen, CandlestickChart, Maximize2, Minimize2, Shield, X } from "lucide-react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { useStore } from "@/state/store";
 import { TradingChartTab } from "./TradingChartTab.tsx";
 import { TradingHudTab } from "./TradingHudTab.tsx";
@@ -25,7 +25,7 @@ export function TradingDeskPanel() {
       const r = await fetch(`/api/trading/state${force ? "?refresh=1" : ""}`);
       if (r.ok) setTradingState((await r.json()) as TradingState);
     } catch {
-      // keep last known snapshot
+      // keep last snapshot
     }
   }, []);
 
@@ -35,7 +35,7 @@ export function TradingDeskPanel() {
       const r = await fetch(`/api/trading/chart?tf=${targetTf}&bars=180${force ? "&refresh=1" : ""}`);
       if (r.ok) setChartData((await r.json()) as TradingChartData);
     } catch {
-      // keep last known chart
+      // keep last chart
     } finally {
       setLoadingChart(false);
     }
@@ -46,7 +46,7 @@ export function TradingDeskPanel() {
       const r = await fetch("/api/trading/journals");
       if (r.ok) setJournalsData((await r.json()) as TradingJournalsData);
     } catch {
-      // keep last known journals
+      // keep last journals
     }
   }, []);
 
@@ -66,7 +66,7 @@ export function TradingDeskPanel() {
     try {
       const r = await fetch("/api/trading/flatten", { method: "POST" });
       const d = (await r.json()) as { ok?: boolean; cancelled_orders?: number; error?: string };
-      setBanner(d.ok ? `Flattened cleanly (cancelled ${d.cancelled_orders ?? 0} orders).` : `Flatten error: ${d.error}`);
+      setBanner(d.ok ? `Flattened cleanly (${d.cancelled_orders ?? 0} orders cancelled).` : `Flatten error: ${d.error}`);
       await fetchState(true);
     } finally {
       setBusyAction(null);
@@ -82,9 +82,7 @@ export function TradingDeskPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (r.ok) {
-        await fetchState(true);
-      }
+      if (r.ok) await fetchState(true);
     } finally {
       setBusyAction(null);
     }
@@ -96,7 +94,7 @@ export function TradingDeskPanel() {
     try {
       const r = await fetch(`/api/trading/approvals/${id}/${action}`, { method: "POST" });
       const d = (await r.json()) as { ok?: boolean; error?: string };
-      setBanner(d.ok ? `Approval ${id}: ${action === "approve" ? "EXECUTED on TopstepX" : "rejected"}.` : `Error: ${d.error}`);
+      setBanner(d.ok ? `Approval ${id}: ${action === "approve" ? "executed on TopstepX" : "rejected"}.` : `Error: ${d.error}`);
       await fetchState(true);
     } finally {
       setBusyAction(null);
@@ -116,8 +114,8 @@ export function TradingDeskPanel() {
           price: Math.round((px - 150) * 4) / 4,
           attempt: 1,
           entry_type: "ko_10am",
-          setup: "Demo Practice Approval Card",
-          reason: "Far-away practice limit (-150pt) to preview 1-click Approval Card flow.",
+          setup: "Practice Demo Card",
+          reason: "Far-away practice limit (-150pt) to preview 1-click approval.",
         }),
       });
       await fetchState(true);
@@ -132,31 +130,27 @@ export function TradingDeskPanel() {
   return (
     <aside
       data-look="trading-desk"
-      className={`flex h-full shrink-0 flex-col border-l border-hairline/40 bg-panel transition-all ${
+      className={`flex h-full shrink-0 flex-col border-l border-edge bg-panel transition-all ${
         wide ? "w-[min(860px,64vw)]" : "w-[min(540px,46vw)]"
       }`}
     >
-      {/* Top Header Strip */}
-      <div className="flex items-center justify-between border-b border-hairline/40 px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className={`size-2 rounded-full ${tradingState?.broker_connected ? "bg-emerald-400" : "bg-rose-400"}`} />
-          <div>
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-ink">
-              <span>Powell v7 Trading Desk</span>
-              {volRegime && (
-                <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] font-bold ${
-                  volRegime === "CRASH" ? "bg-rose-500/20 text-rose-300"
-                    : volRegime === "ELEVATED" ? "bg-amber-400/20 text-amber-300"
-                      : "bg-emerald-500/20 text-emerald-300"
-                }`}>
-                  {volRegime}
-                </span>
-              )}
-            </div>
-            <div className="font-mono text-[10px] text-ink-secondary">
-              {tradingState?.market.mnq_contract ?? "MNQZ6"} {tradingState?.market.last_nq?.toFixed(2) ?? "—"} ·{" "}
-              {tradingState ? `$${tradingState.account.balance.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "Syncing..."}
-            </div>
+      {/* Native-Style Header */}
+      <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`size-1.5 rounded-full ${tradingState?.broker_connected ? "bg-success" : "bg-danger"}`} />
+            <span className="text-[13.5px] font-medium tracking-[-0.01em] text-ink">Trading Desk</span>
+            {volRegime && (
+              <span className={`text-[11px] font-medium ${
+                volRegime === "CRASH" ? "text-danger" : volRegime === "ELEVATED" ? "text-warning" : "text-ink-tertiary"
+              }`}>
+                · {volRegime === "CRASH" ? "High Vol" : volRegime === "ELEVATED" ? "Elevated" : "Normal"}
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 pl-3.5 font-mono text-[11px] text-ink-tertiary">
+            {tradingState?.market.mnq_contract ?? "MNQZ6"} {tradingState?.market.last_nq?.toFixed(2) ?? "—"} ·{" "}
+            {tradingState ? `$${tradingState.account.balance.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "Syncing…"}
           </div>
         </div>
 
@@ -164,7 +158,7 @@ export function TradingDeskPanel() {
           <button
             type="button"
             onClick={() => setWide((w) => !w)}
-            className="flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-raised hover:text-ink"
+            className="flex size-8 items-center justify-center rounded-full text-ink-tertiary transition hover:bg-raised hover:text-ink"
             title={wide ? "Compact width" : "Expand Trading Desk"}
           >
             {wide ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
@@ -172,7 +166,7 @@ export function TradingDeskPanel() {
           <button
             type="button"
             onClick={() => dispatch({ type: "toggleTradingDesk", open: false })}
-            className="flex size-7 items-center justify-center rounded-lg text-ink-secondary hover:bg-raised hover:text-ink"
+            className="flex size-8 items-center justify-center rounded-full text-ink-tertiary transition hover:bg-raised hover:text-ink"
             title="Close Trading Desk"
           >
             <X size={15} />
@@ -180,49 +174,51 @@ export function TradingDeskPanel() {
         </div>
       </div>
 
-      {/* Tab Strip */}
-      <div className="grid grid-cols-3 gap-1 border-b border-hairline/30 bg-inset/50 p-1.5 text-[11px]">
-        <button
-          type="button"
-          onClick={() => setTab("chart")}
-          className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 font-medium transition ${
-            tab === "chart" ? "bg-card text-ink shadow-sm" : "text-ink-secondary hover:text-ink"
-          }`}
-        >
-          <CandlestickChart size={13} /> Live Chart
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("hud")}
-          className={`relative flex items-center justify-center gap-1.5 rounded-lg py-1.5 font-medium transition ${
-            tab === "hud" ? "bg-card text-ink shadow-sm" : "text-ink-secondary hover:text-ink"
-          }`}
-        >
-          <Shield size={13} /> Risk HUD
-          {pendingCount > 0 && (
-            <span className="rounded-full bg-accent px-1.5 text-[9px] font-bold text-white">{pendingCount}</span>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setTab("journals"); void fetchJournals(); }}
-          className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 font-medium transition ${
-            tab === "journals" ? "bg-card text-ink shadow-sm" : "text-ink-secondary hover:text-ink"
-          }`}
-        >
-          <BookOpen size={13} /> Journals
-        </button>
+      {/* Rounded-Full Native Segmented Control */}
+      <div className="px-4 pb-3">
+        <div className="grid grid-cols-3 rounded-full border border-edge bg-inset p-0.5 text-[12px]">
+          <button
+            type="button"
+            onClick={() => setTab("chart")}
+            className={`rounded-full py-1.5 font-medium transition ${
+              tab === "chart" ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink-secondary"
+            }`}
+          >
+            Chart
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("hud")}
+            className={`flex items-center justify-center gap-1.5 rounded-full py-1.5 font-medium transition ${
+              tab === "hud" ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink-secondary"
+            }`}
+          >
+            Risk
+            {pendingCount > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-ink">{pendingCount}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setTab("journals"); void fetchJournals(); }}
+            className={`rounded-full py-1.5 font-medium transition ${
+              tab === "journals" ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink-secondary"
+            }`}
+          >
+            Journal
+          </button>
+        </div>
       </div>
 
       {banner && (
-        <div className="flex items-center justify-between border-b border-hairline/30 bg-accent/15 px-3 py-1.5 font-mono text-[11px] text-accent">
-          <span className="flex items-center gap-1.5"><Activity size={12} /> {banner}</span>
-          <button type="button" onClick={() => setBanner(null)} className="text-ink-secondary hover:text-ink">×</button>
+        <div className="mx-4 mb-2 flex items-center justify-between rounded-lg border border-edge bg-card px-3 py-2 text-[11.5px] text-ink-secondary">
+          <span>{banner}</span>
+          <button type="button" onClick={() => setBanner(null)} className="text-ink-tertiary hover:text-ink">×</button>
         </div>
       )}
 
-      {/* Scrollable Active Tab Body */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Scrollable Body */}
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-edge">
         {tab === "chart" && (
           <TradingChartTab
             chart={chartData}

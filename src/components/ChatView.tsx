@@ -1041,14 +1041,14 @@ export const ChatView = memo(function ChatView({ bot: profile, inForkPanel = fal
             onClick={() => dispatch({ type: "toggleTradingDesk" })}
             className={cn(
               "relative flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium", ELEVATED_FLOAT, ELEVATED_HOVER,
-              state.tradingDeskOpen ? "text-emerald-400" : "text-ink-secondary hover:text-ink",
+              state.tradingDeskOpen ? "text-ink" : "text-ink-secondary hover:text-ink",
             )}
-            title="Toggle Powell v7 Trading Desk"
-            aria-label="Toggle Powell v7 Trading Desk"
+            title="Toggle Trading Desk"
+            aria-label="Toggle Trading Desk"
           >
             <CandlestickChart size={15} />
             <span className="@max-4xl/chathead:hidden">Desk</span>
-            <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-400" />
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
           </button>}
           {!phoneMenu && <button
             data-tour="computer"
