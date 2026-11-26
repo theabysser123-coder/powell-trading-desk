@@ -968,11 +968,11 @@ describe("notification routing", () => {
       expect(opened(bot, true)).toEqual([{ type: "select", id: "bot-1" }]);
     });
 
-    it("opens the bot's main thread while threads are hidden, the way its row would", () => {
+    it("always resumes on the bot's latest active chat while threads are hidden", () => {
       expect(opened(bot, false)).toEqual([{ type: "switchTask", botId: "bot-1", threadId: "later-chat" }]);
       expect(opened({ ...bot, threadId: "later-chat" }, false)).toEqual([{ type: "select", id: "bot-1" }]);
       expect(opened({ ...bot, tasks: undefined }, false)).toEqual([{ type: "select", id: "bot-1" }]);
-      expect(opened({ ...bot, mainThreadId: undefined }, false)).toEqual([{ type: "select", id: "bot-1" }]);
+      expect(opened({ ...bot, mainThreadId: undefined }, false)).toEqual([{ type: "switchTask", botId: "bot-1", threadId: "later-chat" }]);
       const switched = reducer({ ...initialState, bots: [bot], selectedId: "other", activeView: "routines" }, opened(bot, false)[0] as Action);
       expect(switched).toMatchObject({ selectedId: "bot-1", activeView: "chat" });
       expect(switched.bots[0]!.tasks!.find((task) => task.threadId === "routine-report")!.unread).toBe(true);

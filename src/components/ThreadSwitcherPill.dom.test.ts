@@ -38,15 +38,21 @@ describe("the pill's thread switcher", () => {
     expect(q("[role=listbox]")).toBeNull();
   });
 
-  it("opens on a click, never on hover, into the threads: pinned first, the open one selected", () => {
-    render(pepper(THREADS, "launch"));
-    act(() => { q("[data-chathead-threads]")!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
-    expect(q("[role=listbox]")).toBeNull();
-    act(() => q("[data-chathead-threads]")!.click());
-    expect(chips().map((chip) => chip.textContent)).toEqual(["Launch plan", "Weekly sales", "Berlin trip"]);
-    expect(chips()[0].getAttribute("aria-selected")).toBe("true");
-    expect(chips()[1].querySelector('[aria-label="Working"]')).not.toBeNull();
-    expect(chips()[0].querySelector('[aria-label="Pinned"]')).not.toBeNull();
+  it("opens directly on hover and folds back when leaving, with pinned threads first and the open one selected", () => {
+    vi.useFakeTimers();
+    try {
+      render(pepper(THREADS, "launch"));
+      act(() => { q("[data-chathead-switch]")!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+      expect(chips().map((chip) => chip.textContent)).toEqual(["Launch plan", "Weekly sales", "Berlin trip"]);
+      expect(chips()[0].getAttribute("aria-selected")).toBe("true");
+      expect(chips()[1].querySelector('[aria-label="Working"]')).not.toBeNull();
+      expect(chips()[0].querySelector('[aria-label="Pinned"]')).not.toBeNull();
+      act(() => { q("[data-chathead-switch]")!.dispatchEvent(new MouseEvent("mouseout", { bubbles: true })); });
+      act(() => { vi.advanceTimersByTime(220); });
+      expect(q("[role=listbox]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("switches to a picked thread and folds back", () => {

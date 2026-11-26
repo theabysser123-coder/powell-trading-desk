@@ -77,6 +77,7 @@ export function startAcpQuietWatch(input: {
     next = verdict.next; noSignsSince = verdict.noSignsSince;
     if (verdict.stop) return void session.acp.failAll(verdict.stop);
     state = next;
+    if (next.kind === "waiting-model" && !process.env.OMB_ACP_QUIET_NOTICE_MS) return;
     const key = quietKey(next);
     if (key === shownKey || notices >= 12) return;
     shownKey = key;

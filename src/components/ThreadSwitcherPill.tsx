@@ -12,6 +12,7 @@ import { reducedMotion } from "./MenuMotion";
 import { openTabId, type ThreadTab } from "./thread-tabs";
 
 const RESIZE_MS = 240;
+const HOVER_CLOSE_MS = 180;
 const LIST_FADE = 40;
 const CLEAR_OF_CONTROLS = 24;
 const WIDEST = 720;
@@ -71,18 +72,51 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
   const box = useGlidingWidth(open);
   const list = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
+  const openByHover = useRef(false);
+  const closeTimer = useRef<number | null>(null);
   const [fade, setFade] = useState<string | undefined>();
   const active = openTabId(bot);
   const current = tabs.find((tab) => tab.threadId === active);
   const canWrite = bot.yourAccess !== "view";
 
+  const clearCloseTimer = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const openSwitcher = (viaHover: boolean) => {
+    clearCloseTimer();
+    if (!open) {
+      openByHover.current = viaHover;
+      if (box.current) setRoom(centredRoom(box.current));
+      setOpen(true);
+    } else if (!viaHover) {
+      openByHover.current = false;
+    }
+  };
   const close = (refocus: boolean) => {
+    clearCloseTimer();
+    openByHover.current = false;
     setOpen(false);
     if (refocus) requestAnimationFrame(() => toggle.current?.focus());
   };
+  const onHoverEnter = () => {
+    openSwitcher(true);
+  };
+  const onHoverLeave = () => {
+    if (!open) return;
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null;
+      openByHover.current = false;
+      setOpen(false);
+    }, HOVER_CLOSE_MS);
+  };
+  useEffect(() => () => clearCloseTimer(), []);
   useEffect(() => {
     if (!open) return;
-    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) close(false); };
     const resize = () => { if (box.current) setRoom(centredRoom(box.current)); };
     document.addEventListener("pointerdown", away);
     window.addEventListener("resize", resize);
@@ -93,7 +127,7 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
     const row = list.current;
     row.scrollLeft = 0;
     const chip = row.querySelector<HTMLElement>('[aria-selected="true"]') ?? row.querySelector<HTMLElement>("[role=option]");
-    chip?.focus({ preventScroll: true });
+    if (!openByHover.current) chip?.focus({ preventScroll: true });
     const settle = window.setTimeout(() => {
       chip?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       setFade(edgeFade(row, LIST_FADE));
@@ -120,6 +154,7 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
 
   return (
     <div ref={box} data-chathead-switch={open ? "open" : "closed"} onKeyDown={open ? onKey : undefined}
+      onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}
       className={cn("flex h-[39px] min-w-0 items-center overflow-hidden rounded-full p-[5.5px] text-ink", ELEVATED_FLOAT, !open && "max-w-full")} style={open ? { maxWidth: room } : undefined}>
       {open ? (
         <div key="open" className="flex min-w-0 animate-fade-in items-center gap-1 motion-reduce:animate-none">
@@ -159,7 +194,7 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
             {head}
           </button>
           <button ref={toggle} type="button" data-chathead-threads aria-haspopup="listbox" aria-expanded={false}
-            aria-label={t("task.namedList", { name: bot.name })} onClick={() => { if (box.current) setRoom(centredRoom(box.current)); setOpen(true); }}
+            aria-label={t("task.namedList", { name: bot.name })} onClick={() => openSwitcher(false)}
             className={cn(PART, "gap-1.5 pe-2.5 ps-1.5 text-[14px] font-medium leading-5 text-ink-secondary hover:text-ink")}>
             <span aria-hidden="true" className="text-ink-tertiary">·</span>
             <span data-chathead-conversation dir="auto" className="min-w-0 max-w-[180px] truncate">{current ? tabTitle(current) : ""}</span>

@@ -16,6 +16,8 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<unknown>>();
+let cacheGen = 0;
 
 async function runBridge(args: string[], timeoutMs = 25_000): Promise<unknown> {
   const { stdout } = await execFileAsync(PYTHON_BIN, [BRIDGE_SCRIPT, ...args], {
@@ -30,12 +32,28 @@ async function cachedBridge(key: string, ttlMs: number, args: string[], bypass =
   const now = Date.now();
   const hit = cache.get(key);
   if (!bypass && hit && now - hit.at < ttlMs) return hit.data;
-  const data = await runBridge(args);
-  cache.set(key, { at: now, data });
-  return data;
+
+  const existing = inFlight.get(key);
+  if (!bypass && existing) return existing;
+
+  const gen = cacheGen;
+  const promise = runBridge(args)
+    .then((data) => {
+      if (cacheGen === gen) {
+        cache.set(key, { at: Date.now(), data });
+      }
+      return data;
+    })
+    .finally(() => {
+      if (inFlight.get(key) === promise) inFlight.delete(key);
+    });
+
+  inFlight.set(key, promise);
+  return promise;
 }
 
 function invalidateTradingCache(): void {
+  cacheGen += 1;
   cache.clear();
 }
 

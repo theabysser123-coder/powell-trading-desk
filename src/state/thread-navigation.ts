@@ -11,7 +11,7 @@ interface NotificationThreadOwner extends Partial<FeedRoom> {
   tasks?: Array<RowThread>;
 }
 
-type RowThread = { threadId: string; activity?: string; unread?: boolean; busy?: boolean; routineRunId?: unknown; archivedAt?: unknown; updatedAt?: number; createdAt?: number };
+type RowThread = { threadId: string; activity?: string; unread?: boolean; busy?: boolean; routineRunId?: unknown; archivedAt?: unknown; closedBy?: unknown; lastThreadOrderAt?: number; updatedAt?: number; createdAt?: number };
 
 interface NotificationRoutingState {
   bots: NotificationThreadOwner[];
@@ -29,9 +29,29 @@ export function visibleNotificationThread(
   return state.bots.find((candidate) => candidate.id === state.selectedId)?.threadId ?? room?.threadId ?? null;
 }
 
+const latestStamp = (task: RowThread): number => task.lastThreadOrderAt ?? task.updatedAt ?? task.createdAt ?? 0;
+
+/** The bot's newest active (non-routine, non-archived, non-closed) chat; falls back to its current threadId. */
+export function latestChatThread(bot: Pick<NotificationThreadOwner, "threadId" | "tasks">): string {
+  const candidates = (bot.tasks ?? []).filter(
+    (task) => !task.routineRunId && task.archivedAt === undefined && !task.closedBy,
+  );
+  if (candidates.length === 0) return bot.threadId;
+  let best = candidates[0]!;
+  let bestAt = latestStamp(best);
+  for (let i = 1; i < candidates.length; i += 1) {
+    const task = candidates[i]!;
+    const at = latestStamp(task);
+    if (at > bestAt || (at === bestAt && task.threadId === bot.threadId)) {
+      best = task;
+      bestAt = at;
+    }
+  }
+  return best.threadId;
+}
+
 export function botOpensTo(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">, threadsShown: boolean): string {
-  return !threadsShown && bot.mainThreadId && bot.tasks?.some((task) => task.threadId === bot.mainThreadId)
-    ? bot.mainThreadId : bot.threadId;
+  return threadsShown ? bot.threadId : latestChatThread(bot);
 }
 
 export function awayFromMainThread(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">, threadsShown: boolean): boolean {

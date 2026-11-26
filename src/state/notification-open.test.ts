@@ -189,16 +189,16 @@ describe("following a notification", () => {
 });
 
 describe("opening a bot with threads hidden", () => {
-  it("opens its main thread from its row and leaves the thread it was left on unread, with an activity row", async () => {
+  it("opens its latest chat from its row and leaves the thread it was left on unread, with an activity row", async () => {
     await threadsShown(false);
     flushSync(() => openBot(dispatch, scoutNow(), false));
     await settle();
-    expect(sent().filter((request) => request.startsWith("/api/bots/scout/tasks/main-chat"))).toHaveLength(1);
-    expect(reads()).toEqual([]);
-    expect(scoutNow().threadId).toBe("main-chat");
+    expect(sent().filter((request) => request.startsWith("/api/bots/scout/tasks/finished"))).toHaveLength(1);
+    expect(reads()).toEqual(["finished"]);
+    expect(scoutNow().threadId).toBe("finished");
     expect(unread("left-behind")).toBe(true);
     expect(threadsWhenTreeHidden(scoutNow(), {}).map((task) => task.threadId).filter((id) => id !== scoutNow().threadId))
-      .toEqual(expect.arrayContaining(["left-behind", "finished"]));
+      .toEqual(expect.arrayContaining(["left-behind"]));
   });
 
   it("lands on a search hit in another thread by the switch alone, with the whole thread", async () => {
@@ -257,14 +257,14 @@ describe("launching the app on a bot", () => {
     await launch();
   }
 
-  it("opens its main thread while threads are hidden, leaving the reply the bot was left on unread", async () => {
+  it("opens its latest chat while threads are hidden, leaving the reply the bot was left on unread", async () => {
     await relaunch(false);
     expect(state.selectedId).toBe("scout");
     const switches = sent().filter((request) => request.startsWith("/api/bots/scout/tasks/"));
     expect(switches).toHaveLength(1);
-    expect(switches[0]).toMatch(/^\/api\/bots\/scout\/tasks\/main-chat\b/);
-    expect(reads()).toEqual([]);
-    expect(scoutNow().threadId).toBe("main-chat");
+    expect(switches[0]).toMatch(/^\/api\/bots\/scout\/tasks\/finished\b/);
+    expect(reads()).toEqual(["finished"]);
+    expect(scoutNow().threadId).toBe("finished");
     expect(unread("left-behind")).toBe(true);
     expect(threadsWhenTreeHidden(scoutNow(), {}).map((task) => task.threadId)).toContain("left-behind");
   });

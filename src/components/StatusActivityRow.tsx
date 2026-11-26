@@ -13,6 +13,8 @@ export function StatusActivityRow({ message }: { message: Message }) {
   const { dispatch } = useStore();
   const status = statusActivity(message);
   if (!status) return null;
+  // Suppress noisy slow-model heartbeat banners ("... is waiting on its model: no reply for ...").
+  if (status.kind === "notice" && /\bis waiting on its model:\s*no reply for\b/i.test(status.text)) return null;
   if (status.kind === "stopped") return <CancelledTurnRow name={message.tool?.name} stoppedBy={message.stoppedBy} />;
   if (isSavedToThreadLine(message)) {
     return <div role="status" data-saved-to-thread="" className="flex w-fit items-center gap-1.5 px-1 text-[12px] leading-4 text-ink-tertiary"><Brain size={14} aria-hidden="true" />{status.text}</div>;
