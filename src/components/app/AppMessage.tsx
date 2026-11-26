@@ -122,10 +122,10 @@ function AppRow({ botId, botName, threadId, message, payload, pool, room }: {
   const frame = useRef<AppFrameHandle | null>(null);
   const wide = useRef<AppFrameHandle | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
-  // A page is a compact card where it has somewhere to open: the chat's page pane, or over the window in a room.
+  // A bordered page is a compact preview card where it has somewhere to open; a frameless visual stays live and interactive inline in chat.
   const paneSlot = useContext(PagePaneContext);
   const pane = page && !room ? paneSlot : null;
-  const compact = Boolean(pane) || (page && Boolean(room));
+  const compact = bordered && (Boolean(pane) || (page && Boolean(room)));
   const paneOpen = Boolean(pane && fullScreen);
   const row = useRef<HTMLDivElement | null>(null);
   const mounted = useRef(true);

@@ -6,10 +6,11 @@ import { DATA_TOOLS } from "./data/tools.ts";
 import bridgedAgents from "./drivers/agents-catalog-goldens/bridged.tools-list.json" with { type: "json" };
 import fullAgents from "./drivers/agents-catalog-goldens/full.tools-list.json" with { type: "json" };
 import { createPageSchema, wideSchema } from "./testing/oversized-tool-schema.ts";
-import { fitToolSchema, schemaBytes, toolSchemaProfile, toolSchemaProfileFor, type ToolSchemaProfile } from "./tool-schema-profile.ts";
+import { fitToolEntry, fitToolSchema, schemaBytes, toolSchemaProfile, toolSchemaProfileFor, type ToolSchemaProfile } from "./tool-schema-profile.ts";
 
 type Json = Record<string, unknown>;
 const MOONSHOT = toolSchemaProfile("moonshot")!;
+const ANTIGRAVITY = toolSchemaProfile("antigravity")!;
 const isObject = (value: unknown): value is Json => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 /** What Moonshot's validator (walle, MFJS) rejects in a fitted schema: an untyped subschema, a `required` name with no
@@ -143,7 +144,8 @@ describe("fitting a tool schema to Moonshot's per-tool limit", () => {
 });
 
 describe("which turns carry a schema profile", () => {
-  it("is Kimi Code's engine, Moonshot's own endpoint, or a Moonshot model on OpenRouter", () => {
+  it("is Kimi Code's engine, Moonshot's own endpoint, or a Moonshot model on OpenRouter, and Antigravity for its engine", () => {
+    expect(toolSchemaProfileFor({ engine: "antigravityAgent" })).toBe(ANTIGRAVITY);
     expect(toolSchemaProfileFor({ engine: "kimiAgent" })).toBe(MOONSHOT);
     expect(toolSchemaProfileFor({ url: "https://api.moonshot.ai/v1" })).toBe(MOONSHOT);
     expect(toolSchemaProfileFor({ url: "https://api.moonshot.cn/v1", model: "kimi-k2.6" })).toBe(MOONSHOT);
@@ -172,6 +174,27 @@ describe("OpenMausBot's own tools", () => {
     const profiles: ToolSchemaProfile[] = [MOONSHOT];
     for (const profile of profiles) {
       for (const tool of tools) expect([tool.name, fitToolSchema(tool.inputSchema as Json, profile).outcome]).toEqual([tool.name, "kept"]);
+    }
+  });
+
+  it.each(catalogs)("fit Antigravity's per-tool ceiling without dropping any tool or leaving array schemas without items: %s", (_name, tools) => {
+    const missingItems = (node: unknown, path = "root", out: string[] = []): string[] => {
+      if (!isObject(node)) return out;
+      const isArr = node.type === "array" || (Array.isArray(node.type) && node.type.includes("array"));
+      if (isArr && !("items" in node)) out.push(path);
+      if (isObject(node.properties)) for (const [k, v] of Object.entries(node.properties)) missingItems(v, `${path}.${k}`, out);
+      if (isObject(node.items)) missingItems(node.items, `${path}[]`, out);
+      if (Array.isArray(node.anyOf)) node.anyOf.forEach((b, i) => missingItems(b, `${path}|${i}`, out));
+      return out;
+    };
+    for (const tool of tools as ReadonlyArray<{ name: string; description?: string; inputSchema: Json }>) {
+      const fit = fitToolEntry({ name: tool.name, description: tool.description ?? "", inputSchema: tool.inputSchema }, ANTIGRAVITY);
+      expect([tool.name, fit.outcome]).not.toEqual([tool.name, "dropped"]);
+      expect(fit.bytes, tool.name).toBeLessThanOrEqual(ANTIGRAVITY.maxToolBytes!);
+      if (fit.outcome !== "dropped") {
+        expect(schemaBytes({ name: tool.name, description: fit.description, parameters: fit.schema }), tool.name).toBeLessThanOrEqual(ANTIGRAVITY.maxToolBytes!);
+        expect(missingItems(fit.schema), tool.name).toEqual([]);
+      }
     }
   });
 });

@@ -1,6 +1,6 @@
 // Strict providers (OpenAI, xAI, Bedrock, Kimi…) refuse a tool schema whose root is not a plain `type: "object"`, failing
 // the whole turn; cua-driver 0.22.1 ships such a root on browser_prepare. Servers still validate calls against their own.
-import { fitToolSchema, type ToolSchemaProfile } from "./tool-schema-profile.ts";
+import { fitToolEntry, fitToolSchema, type ToolSchemaProfile } from "./tool-schema-profile.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -105,6 +105,37 @@ export function shortenedToolNote(provider: string): string {
 /** A tool list under a provider's profile: each schema keeps a plain object root and fits, or the tool is left out.
  * Every change is one line to `log`; a tool already within the limits is the same object. */
 export function fitToolList(tools: readonly unknown[], profile: ToolSchemaProfile, log: (line: string) => void = () => {}): unknown[] {
+  if (profile.maxToolBytes !== undefined) {
+    let cap = profile.maxToolBytes;
+    const pass = (limit: number): { entries: unknown[]; bytes: number } => {
+      const effective: ToolSchemaProfile = limit === profile.maxToolBytes ? profile : { ...profile, maxToolBytes: limit, maxSchemaBytes: limit };
+      const entries: unknown[] = [];
+      let bytes = 0;
+      for (const tool of tools) {
+        if (!isObject(tool)) { entries.push(tool); continue; }
+        const rooted = providerSafeInputSchema(tool.inputSchema);
+        const name = toolName(tool);
+        const description = typeof tool.description === "string" ? tool.description : "";
+        let fit = fitToolEntry({ name, description, inputSchema: rooted }, effective);
+        if (fit.outcome === "dropped" && limit < profile.maxToolBytes!) {
+          fit = fitToolEntry({ name, description, inputSchema: rooted }, profile);
+        }
+        if (fit.outcome === "dropped") {
+          log(`left out tool "${name}": it is ${fit.from} bytes and still ${fit.bytes} at its shortest, over ${profile.provider}'s ${profile.maxToolBytes}-byte limit for one tool`);
+          continue;
+        }
+        bytes += fit.bytes;
+        entries.push(fit.outcome === "kept" && fit.schema === tool.inputSchema ? tool : { ...tool, description: fit.description, inputSchema: fit.schema });
+      }
+      return { entries, bytes };
+    };
+    let result = pass(cap);
+    while (profile.maxListBytes !== undefined && result.bytes > profile.maxListBytes && cap > 450) {
+      cap = Math.max(450, Math.floor(cap * 0.85));
+      result = pass(cap);
+    }
+    return result.entries;
+  }
   const fitted: unknown[] = [];
   for (const tool of tools) {
     if (!isObject(tool)) {
@@ -112,8 +143,8 @@ export function fitToolList(tools: readonly unknown[], profile: ToolSchemaProfil
       continue;
     }
     const rooted = providerSafeInputSchema(tool.inputSchema);
-    const fit = fitToolSchema(rooted, profile);
     const name = toolName(tool);
+    const fit = fitToolSchema(rooted, profile);
     const limit = `${profile.provider}'s ${profile.maxSchemaBytes}-byte limit for one tool`;
     if (fit.outcome === "dropped") {
       log(`left out tool "${name}": its parameters are ${fit.from} bytes and still ${fit.bytes} at their shortest, over ${limit}`);

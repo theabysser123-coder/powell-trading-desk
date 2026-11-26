@@ -157,6 +157,10 @@ const HEAD_OF_DESK_SOUL = [
   `- \`${PY} ${BRIDGE} state\` for live TopstepX balance, MNQ/ES price, open positions, volatility regime, and today's USD news,`,
   `- \`${PY} ${BRIDGE} journals\` for live session journals & 80-day benchmark stats,`,
   "and answer like a real trading desk PM who knows every number cold. Delegate deep execution, risk, or journal tasks to your 3 specialists whenever appropriate.",
+  "",
+  "In-chat visuals:",
+  "- Use `show_html` (`frameless: true` for live interactive visuals inline in chat) with React JSX (`react`, `lucide-react`, `echarts`, `lightweight-charts`, `Chart`/`useTheme` from `mausbot`, Tailwind CSS) or standalone HTML/SVG whenever a chart, equity curve, payoff/risk gauge, trade replay, or comparison dashboard communicates faster than a wall of text.",
+  "- Use `data_show` for SQL-backed inline Vega-Lite charts, `show_widget` for quick interactive cards/charts/controls, and fenced `mermaid` or `svg` blocks for lightweight diagrams.",
 ].join("\n");
 
 export function ensureTradingDeskBots(store: Store): BotRecord[] {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Zap } from "lucide-react";
+import { Plus, Workflow, Zap } from "lucide-react";
 
 import { automationsFrom, automationSentence, automationStatus, orderAutomations, runLine, statusLine, type Automation } from "@/lib/automations";
 import { cn } from "@/lib/cn";
@@ -16,6 +16,7 @@ import { AppEventEditor } from "./automations/AppEventEditor";
 import { useAllAutomationActions } from "./automations/app-actions";
 import { AutomationPanel } from "./automations/AutomationPanel";
 import { AutomationsCalendar } from "./automations/AutomationsCalendar";
+import { AutomationsCanvas } from "./automations/AutomationsCanvas";
 import { LimitWarnings } from "./automations/LimitWarnings";
 import { NewAutomation, type SetUpKind } from "./automations/NewAutomation";
 import { FixButton, StatusMark } from "./automations/parts";
@@ -41,7 +42,7 @@ export function TriggersPage({ onBack, onOpenRoom }: { onBack: () => void; onOpe
   const appTriggers = useAppTriggers();
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const focus = state.routinesFocus;
-  const view = focus?.view === "calendar" ? "calendar" : "list";
+  const view = focus?.view === "calendar" ? "calendar" : focus?.view === "canvas" ? "canvas" : "list";
   const [openId, setOpenId] = useState<string | null>(focus?.section !== "logs" ? focus?.routineId ?? null : null);
   const [botFilter, setBotFilter] = useState(focus?.botId ?? "all");
   const [department, setDepartment] = useState("all");
@@ -94,17 +95,18 @@ export function TriggersPage({ onBack, onOpenRoom }: { onBack: () => void; onOpe
                 {departments.hasGeneral && <option value={GENERAL_DEPARTMENT}>{t("automations.generalDepartment")}</option>}
               </Select>
             )}
-            {showFilter && view === "list" && (
+            {showFilter && view !== "calendar" && (
               <Select size="sm" aria-label={t("automations.allBots")} value={botFilter} onChange={(event) => setBotFilter(event.target.value)} className="max-w-[180px]">
                 <option value="all">{t("automations.allBots")}</option>
                 {departmentBots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
               </Select>
             )}
             <div role="group" aria-label={t("automations.view")} className="flex items-center rounded-lg border border-hairline/50 bg-panel p-0.5">
-              {(["list", "calendar"] as const).map((option) => (
+              {(["list", "calendar", "canvas"] as const).map((option) => (
                 <button key={option} type="button" aria-pressed={view === option} onClick={() => dispatch({ type: "showRoutines", view: option, botId: botFilter === "all" ? undefined : botFilter })}
-                  className={cn("rounded-md px-3 py-1 text-[13px] font-medium", view === option ? "bg-raised text-ink shadow-sm" : "text-ink-secondary hover:text-ink")}>
-                  {option === "list" ? t("automations.list") : t("automations.calendar")}
+                  className={cn("inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-[13px] font-medium", view === option ? "bg-raised text-ink shadow-sm" : "text-ink-secondary hover:text-ink")}>
+                  {option === "canvas" && <Workflow size={13} aria-hidden="true" />}
+                  {option === "list" ? t("automations.list") : option === "calendar" ? t("automations.calendar") : "Canvas"}
                 </button>
               ))}
             </div>
@@ -113,7 +115,20 @@ export function TriggersPage({ onBack, onOpenRoom }: { onBack: () => void; onOpe
       </ToolPageHeader>
 
       <div className="relative flex min-h-0 flex-1">
-        {view === "calendar" ? <AutomationsCalendar botFilter={botFilter} department={activeDepartment} selectedAutomationId={openId} onOpenAutomation={setOpenId} onOpenRoom={onOpenRoom} /> : (
+        {view === "calendar" ? (
+          <AutomationsCalendar botFilter={botFilter} department={activeDepartment} selectedAutomationId={openId} onOpenAutomation={setOpenId} onOpenRoom={onOpenRoom} />
+        ) : view === "canvas" ? (
+          <AutomationsCanvas
+            automations={listed}
+            bots={visibleBots}
+            selectedAutomationId={openId}
+            busyAction={actions.busy}
+            onSelectAutomation={setOpenId}
+            onRunNow={(automation) => void actions.runNow(automation)}
+            onToggle={(automation) => void actions.toggle(automation)}
+            onNewAutomation={() => setNewText("")}
+          />
+        ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-3xl p-4 sm:p-6">
               <LimitWarnings botFilter={showFilter ? botFilter : "all"} />

@@ -160,7 +160,7 @@ describe("the shell's HTML", () => {
       expect(url, url).toMatch(/\/npm\/(@[\w-]+\/)?[\w.-]+@\d+\.\d+\.\d+\//);
     }
     expect(JSX_PAGE_LIBRARIES.sucrase).toBe(packageJson.dependencies.sucrase);
-    expect(JSX_PAGE_MODULES).toEqual(["react", "react/jsx-runtime", "react-dom", "react-dom/client", "lucide-react", "echarts", "mausbot"]);
+    expect(JSX_PAGE_MODULES).toEqual(["react", "react/jsx-runtime", "react-dom", "react-dom/client", "lucide-react", "echarts", "lightweight-charts", "mausbot"]);
   });
 
   it("carries the file as JSON no script element can be closed by, with the import map and Tailwind ahead of it", () => {

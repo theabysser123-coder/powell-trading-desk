@@ -11,6 +11,7 @@ export const JSX_PAGE_LIBRARIES = {
   "@tailwindcss/browser": "4.3.3",
   "lucide-react": "1.52.0",
   echarts: "6.1.0",
+  "lightweight-charts": "5.3.0",
   sucrase: "3.35.1",
 } as const;
 
@@ -25,6 +26,7 @@ export const JSX_PAGE_IMPORTS: Readonly<Record<string, string>> = {
   "react-dom/client": `${NPM}/react-dom@${JSX_PAGE_LIBRARIES["react-dom"]}/client/+esm`,
   "lucide-react": `${NPM}/lucide-react@${JSX_PAGE_LIBRARIES["lucide-react"]}/+esm`,
   echarts: `${NPM}/echarts@${JSX_PAGE_LIBRARIES.echarts}/dist/echarts.esm.min.js`,
+  "lightweight-charts": `${NPM}/lightweight-charts@${JSX_PAGE_LIBRARIES["lightweight-charts"]}/+esm`,
 };
 export const JSX_PAGE_MODULES: readonly string[] = [...Object.keys(JSX_PAGE_IMPORTS), "mausbot"];
 

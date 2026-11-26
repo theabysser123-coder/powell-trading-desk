@@ -5,7 +5,7 @@ import { canUseMcpServer } from "../../shared/tool-scope.ts";
 import { harnessMcpTokenEnv } from "../harness-mcp-token.ts";
 import { appMountFor, gateServer, mcpStdioServer, type AppMount } from "../mcp-gate-config.ts";
 import { AGENTS_ENV_HEADER, OWN_MCP_HTTP_PATH } from "../routes/own-mcp-http-path.ts";
-import { TOOL_SCHEMA_PROFILE_ENV, toolSchemaProfileFor, type ToolSchemaProfileId } from "../tool-schema-profile.ts";
+import { TOOL_SCHEMA_PROFILE_ENV, TOOL_SCHEMA_PROFILE_HEADER, toolSchemaProfileFor, type ToolSchemaProfileId } from "../tool-schema-profile.ts";
 import { AGENTS_MCP_ENV } from "./agents-mcp-env.ts";
 import { OWN_APPS_SERVER } from "../../shared/own-apps.ts";
 import { shareToolBudget, TOOL_LIMIT_ENV, TOOL_LIMIT_HEADER } from "../tool-count-limit.ts";
@@ -103,8 +103,11 @@ export function ownMcpOverHttp(server: TurnStdioMcpServer): { url: string; heade
   const kind = HARNESS_KINDS.find((candidate) => candidate === server.args[script + 1]);
   const token = kind && server.env[harnessMcpTokenEnv(kind)];
   const limit = server.env[TOOL_LIMIT_ENV];
+  const schemaProfile = server.env[TOOL_SCHEMA_PROFILE_ENV];
   return kind && token ? { url: `${harness}${OWN_MCP_HTTP_PATH}${kind}`,
-    headers: { authorization: `Bearer ${token}`, ...(limit === undefined ? {} : { [TOOL_LIMIT_HEADER]: limit }) } } : null;
+    headers: { authorization: `Bearer ${token}`,
+      ...(limit === undefined ? {} : { [TOOL_LIMIT_HEADER]: limit }),
+      ...(schemaProfile === undefined ? {} : { [TOOL_SCHEMA_PROFILE_HEADER]: schemaProfile }) } } : null;
 }
 
 /** The turn's MCP servers as ACP session/new takes them. stdio is the baseline every ACP agent supports; an agent that

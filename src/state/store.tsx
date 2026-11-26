@@ -516,7 +516,7 @@ export interface AppState {
   routines: Routine[]; routineRunLimits?: RoutineRunLimits;
   routineRuns: RoutineRun[];
   routinesLoadState: "loading" | "ready" | "error"; routineRunsSince: number | null;
-  routinesFocus: { section?: "schedule" | "logs"; view?: "calendar" | "list"; botId?: string; routineId?: string; runStatus?: RoutineRunStatusFilter; nonce: number };
+  routinesFocus: { section?: "schedule" | "logs"; view?: "calendar" | "list" | "canvas"; botId?: string; routineId?: string; runStatus?: RoutineRunStatusFilter; nonce: number };
   webhooks: WebhookTrigger[];
   webhookAttempts: WebhookAttempt[];
   webhookIngress: WebhookIngressStatus | null;
@@ -594,7 +594,7 @@ export type Action =
   | { type: "sections"; sections: string[] }
   | { type: "botsOrdered"; botIds: string[] } | { type: "groupsOrdered"; groupIds: string[] }
   | { type: "sectionDeleted"; section: string; sections: string[] }
-  | { type: "showRoutines"; section?: "schedule" | "logs"; view?: "calendar" | "list"; botId?: string; routineId?: string; runStatus?: RoutineRunStatusFilter }
+  | { type: "showRoutines"; section?: "schedule" | "logs"; view?: "calendar" | "list" | "canvas"; botId?: string; routineId?: string; runStatus?: RoutineRunStatusFilter }
   | { type: "showTeamMap" } | { type: "showPublishedApps" } | { type: "showSkillBurgers" } | { type: "showTeamFiles" } | { type: "showAnnouncements" } | { type: "showWebPanel"; id: string }
   | { type: "showFiles"; suggest?: string[] }
   | { type: "showChat" }
@@ -936,7 +936,7 @@ function reduceApp(state: AppState, action: Action): AppState {
         routinesFocus: { section: action.section, view: action.view, botId: action.botId, routineId: action.routineId, runStatus: action.runStatus, nonce: state.routinesFocus.nonce + 1 },
         settingsOpen: false,
         computerOpen: false,
-  tradingDeskOpen: true,
+        tradingDeskOpen: false,
         inspectorOpen: false,
         activityOpen: false,
         notificationsOpen: false,
@@ -1840,7 +1840,7 @@ export const initialState: AppState = {
   pluginsSurface: "apps",
   botCreationPending: false,
   computerOpen: false,
-  tradingDeskOpen: true,
+  tradingDeskOpen: false,
   inspectorOpen: false,
   forkPanel: null,
   activityOpen: false,

@@ -10,6 +10,7 @@ import { AGENTS_MCP_ENV } from "../drivers/agents-mcp-env.ts";
 import type { Json } from "../drivers/agents-client.ts";
 import { failure, harnessMcpRequest, MAX_INPUT_BYTES, MAX_OUTPUT_BYTES, parseHarnessMcpKind, type RpcId } from "../harness-mcp-request.ts";
 import { parseToolLimit, TOOL_LIMIT_HEADER } from "../tool-count-limit.ts";
+import { TOOL_SCHEMA_PROFILE_HEADER, toolSchemaProfile } from "../tool-schema-profile.ts";
 import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
 
 import { AGENTS_ENV_HEADER, OWN_MCP_HTTP_PATH } from "./own-mcp-http-path.ts";
@@ -64,7 +65,11 @@ export function createOwnMcpHttpRoutes(options: { keepaliveMs?: number; maxPendi
     const harness = `http://127.0.0.1:${req.socket.localPort}/`;
     const answer: (frame: Json) => Promise<unknown> = kind === "agents"
       ? agentsMcp(agentsEnv(req.headers, token, harness.slice(0, -1)))
-      : (frame) => harnessMcpRequest(frame, { url: harness, token, kind, toolLimit: parseToolLimit(req.headers[TOOL_LIMIT_HEADER]) });
+      : (frame) => harnessMcpRequest(frame, {
+          url: harness, token, kind,
+          toolLimit: parseToolLimit(req.headers[TOOL_LIMIT_HEADER]),
+          schemaProfile: toolSchemaProfile(req.headers[TOOL_SCHEMA_PROFILE_HEADER]),
+        });
     const frames: Frame[] = Array.isArray(body) ? body : [body as Frame];
     const key = `${kind}\0${token}`;
 
