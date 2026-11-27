@@ -37,6 +37,7 @@ const app = (id: string, name: string, more: Partial<LocalApp> = {}): LocalApp =
 });
 const BOARD = app("la_board0000000000000", "Sales board", { versions: [{ rev: 0, at: NOW }, { rev: 1, at: NOW }, { rev: 2, at: NOW }], rev: 2 });
 const ROTA = app("la_rota00000000000000", "Staff rota", { chat: false, botId: "gone", bot: null });
+const SAMPLE = app("la_starter_ledger__", "Ledger", { chat: false, botId: "", threadId: "", messageId: "la_starter_ledger__", bot: null, sample: true });
 
 let root: Root;
 let host: HTMLElement;
@@ -122,6 +123,24 @@ describe("saved apps on the apps page", () => {
     expect(card(BOARD.id).textContent).toContain("Mira · 2 hr ago");
     expect(card(ROTA.id).textContent).toContain("Bot removed");
     expect(button(card(BOARD.id), "Open in its own window")).toBeUndefined();
+  });
+
+  it("labels a starter app Sample, with no chat to go to, in its card and its view", async () => {
+    saved = [BOARD, SAMPLE];
+    await show();
+    expect(card(SAMPLE.id).textContent).toContain("Sample · 2 hr ago");
+    expect(card(SAMPLE.id).textContent).not.toContain("Bot removed");
+    act(() => button(card(SAMPLE.id), "More for Ledger").click());
+    expect(menuItem("Go to chat")).toBeUndefined();
+    expect(menuItem("Remove")).toBeDefined();
+    act(() => button(card(SAMPLE.id), "Open Ledger").click());
+    await settle();
+    const header = host.querySelector("header")!.textContent;
+    expect(header).toContain("Sample");
+    expect(header).not.toContain("By ");
+    expect(button(host, "Go to chat")).toBeUndefined();
+    expect(host.textContent).not.toContain("chat it came from");
+    expect(host.querySelector(`[data-local-app-view="${SAMPLE.id}"]`)?.getAttribute("data-local-app-state")).toBe("live");
   });
 
   it("opens an app in its own window on the desktop", async () => {
@@ -260,6 +279,16 @@ describe("installing a saved app on this computer", () => {
     expect(document.querySelector("[role=dialog], [role=alertdialog]")).toBeNull();
   });
 
+  it("installs a starter app like any saved one", async () => {
+    saved = [BOARD, SAMPLE];
+    await show();
+    act(() => button(card(SAMPLE.id), "More for Ledger").click());
+    await act(async () => menuItem("Install on this computer").click());
+    await settle();
+    expect(bridge.install).toHaveBeenCalledWith({ id: SAMPLE.id, name: "Ledger" });
+    expect(card(SAMPLE.id).querySelector("[data-local-app-installed]")).not.toBeNull();
+  });
+
   it("says so in one line when a launcher couldn't be written", async () => {
     bridge.install.mockResolvedValueOnce({ ok: false, reason: "failed" });
     await show();
@@ -306,6 +335,117 @@ describe("installing a saved app on this computer", () => {
     await settle();
     expect(bridge.uninstall).toHaveBeenCalledWith(BOARD.id);
     expect(host.querySelector("header [data-local-app-installed]")).toBeNull();
+  });
+});
+
+describe("an installed app's icon on the Desktop", () => {
+  type Bridge = Record<"list" | "install" | "uninstall" | "cleanup" | "addToDesktop" | "removeFromDesktop", ReturnType<typeof vi.fn>>;
+  let bridge: Bridge;
+  let installed: string[];
+  let onDesktop: string[];
+  const order: string[] = [];
+  beforeEach(() => {
+    resetAppInstall();
+    installed = [BOARD.id];
+    onDesktop = [];
+    order.length = 0;
+    bridge = {
+      list: vi.fn(async () => ({ available: true, apps: installed.map((id) => ({ id, name: "x", path: "/p", desktop: onDesktop.includes(id) })) })),
+      install: vi.fn(async (input: { id: string; name: string }) => { order.push(`install ${input.id}`); installed = [...installed, input.id]; return { ok: true, app: { id: input.id, name: input.name, path: "/p" } }; }),
+      uninstall: vi.fn(async (id: string) => { installed = installed.filter((one) => one !== id); onDesktop = onDesktop.filter((one) => one !== id); return { ok: true, removed: true }; }),
+      cleanup: vi.fn(async () => []),
+      addToDesktop: vi.fn(async (id: string) => { order.push(`desktop ${id}`); onDesktop = [...onDesktop, id]; return { ok: true, app: { id, name: "x", path: "/p", desktop: true } }; }),
+      removeFromDesktop: vi.fn(async (id: string) => { onDesktop = onDesktop.filter((one) => one !== id); return { ok: true, removed: true }; }),
+    };
+    vi.stubGlobal("ogb", { appInstall: bridge });
+  });
+
+  it("offers Add to Desktop on the card, and Remove from Desktop once it is there", async () => {
+    await show();
+    act(() => button(card(BOARD.id), "More for Sales board").click());
+    expect(menuItem("Remove from Desktop")).toBeUndefined();
+    await act(async () => menuItem("Add to Desktop").click());
+    await settle();
+    expect(bridge.addToDesktop).toHaveBeenCalledWith(BOARD.id);
+    expect(bridge.install).not.toHaveBeenCalled();
+    act(() => button(card(BOARD.id), "More for Sales board").click());
+    expect(menuItem("Add to Desktop")).toBeUndefined();
+    expect(menuItem("Uninstall")).toBeDefined();
+    await act(async () => menuItem("Remove from Desktop").click());
+    await settle();
+    expect(bridge.removeFromDesktop).toHaveBeenCalledWith(BOARD.id);
+    act(() => button(card(BOARD.id), "More for Sales board").click());
+    expect(menuItem("Add to Desktop")).toBeDefined();
+    expect(document.querySelector("[role=dialog], [role=alertdialog]")).toBeNull();
+  });
+
+  it("installs an app that is not installed yet, then adds it to the Desktop", async () => {
+    await show();
+    act(() => button(card(ROTA.id), "More for Staff rota").click());
+    expect(menuItem("Install on this computer")).toBeDefined();
+    await act(async () => menuItem("Add to Desktop").click());
+    await settle();
+    expect(order).toEqual([`install ${ROTA.id}`, `desktop ${ROTA.id}`]);
+    expect(card(ROTA.id).querySelector("[data-local-app-installed]")).not.toBeNull();
+    act(() => button(card(ROTA.id), "More for Staff rota").click());
+    expect(menuItem("Uninstall")).toBeDefined();
+    expect(menuItem("Remove from Desktop")).toBeDefined();
+  });
+
+  it("says so in one line when the install or the Desktop icon failed, and never adds one after a failed install", async () => {
+    bridge.addToDesktop.mockResolvedValueOnce({ ok: false, reason: "no-desktop" });
+    await show();
+    act(() => button(card(BOARD.id), "More for Sales board").click());
+    await act(async () => menuItem("Add to Desktop").click());
+    await settle();
+    expect([...host.querySelectorAll("[role=alert]")].map((line) => line.textContent)).toEqual(["“Sales board” couldn't be added to the Desktop. Try again."]);
+    bridge.install.mockResolvedValueOnce({ ok: false, reason: "failed" });
+    bridge.addToDesktop.mockClear();
+    act(() => button(card(ROTA.id), "More for Staff rota").click());
+    await act(async () => menuItem("Add to Desktop").click());
+    await settle();
+    expect(bridge.addToDesktop).not.toHaveBeenCalled();
+    expect([...host.querySelectorAll("[role=alert]")].map((line) => line.textContent)).toEqual(["“Staff rota” couldn't be installed on this computer. Try again."]);
+  });
+
+  it("offers no Desktop item in a desktop build without it", async () => {
+    vi.stubGlobal("ogb", { appInstall: { list: bridge.list, install: bridge.install, uninstall: bridge.uninstall, cleanup: bridge.cleanup } });
+    await show();
+    act(() => button(card(BOARD.id), "More for Sales board").click());
+    expect(menuItem("Uninstall")).toBeDefined();
+    expect(menuItem("Add to Desktop")).toBeUndefined();
+  });
+
+  it("offers both from the app view's header, and Uninstall clears the Desktop item", async () => {
+    onDesktop = [BOARD.id];
+    openLocalApp(BOARD.id);
+    await show();
+    act(() => button(host, "More for Sales board").click());
+    expect(menuItem("Uninstall")).toBeDefined();
+    await act(async () => menuItem("Remove from Desktop").click());
+    await settle();
+    expect(bridge.removeFromDesktop).toHaveBeenCalledWith(BOARD.id);
+    act(() => button(host, "More for Sales board").click());
+    await act(async () => menuItem("Add to Desktop").click());
+    await settle();
+    expect(bridge.addToDesktop).toHaveBeenCalledWith(BOARD.id);
+    act(() => button(host, "More for Sales board").click());
+    await act(async () => menuItem("Uninstall").click());
+    await settle();
+    act(() => button(host, "More for Sales board").click());
+    expect(menuItem("Install on this computer")).toBeDefined();
+    expect(menuItem("Add to Desktop")).toBeDefined();
+  });
+
+  it("shows a failed Desktop change in the app view's one line", async () => {
+    bridge.removeFromDesktop.mockResolvedValueOnce({ ok: false, reason: "invalid-id" });
+    onDesktop = [BOARD.id];
+    openLocalApp(BOARD.id);
+    await show();
+    act(() => button(host, "More for Sales board").click());
+    await act(async () => menuItem("Remove from Desktop").click());
+    await settle();
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("“Sales board” couldn't be removed from the Desktop. Try again.");
   });
 });
 

@@ -8,8 +8,8 @@ import { t } from "@/lib/i18n";
 import { changeLocalApp, fetchLocalAppDocument, loadLocalApps, useLocalApps } from "@/lib/local-apps";
 import type { Bot } from "@/state/store";
 import { AppFrame, type AppFrameHandle, type AppFrameProblem } from "../app/AppFrame";
-import { InstalledMark, installItems, LocalAppMark } from "./LocalAppCard";
-import { installLocalApp, readInstalled, uninstallLocalApp, useAppInstall } from "@/lib/local-app-install";
+import { desktopFailedText, InstalledMark, installItems, LocalAppMark, type InstallActions } from "./LocalAppCard";
+import { addLocalAppToDesktop, installLocalApp, readInstalled, removeLocalAppFromDesktop, uninstallLocalApp, useAppInstall } from "@/lib/local-app-install";
 import { SidebarPopoverMenu, type SidebarMenuItem } from "../SidebarPopoverMenu";
 import { TOOL_PAGE_TITLE, ToolPage, ToolPageActions, ToolPageHeader } from "../ToolPageShell";
 
@@ -90,18 +90,24 @@ export function LocalAppView({ id, botOf, onBack, onGoToChat, onOpenWindow }: {
   const goToChat = app ? onGoToChat?.(app) : undefined;
   const title = app?.name ?? "";
   const installed = Boolean(app && install?.ids.has(app.id));
-  const installOne = app && install?.available ? { installed, run: () => {
+  const onDesktop = Boolean(app && install?.desktop?.has(app.id));
+  const installOne: InstallActions | undefined = app && install?.available ? { installed, run: () => {
     setInstallFailed(null);
     void (installed ? uninstallLocalApp(app.id) : installLocalApp(app))
       .catch(() => setInstallFailed(t(installed ? "localApps.install.uninstallFailed" : "localApps.install.failed", { name: app.name })));
-  } } : undefined;
+  }, ...(install.canDesktop ? { desktop: { on: onDesktop, run: () => {
+    setInstallFailed(null);
+    void (onDesktop ? removeLocalAppFromDesktop(app.id) : addLocalAppToDesktop(app))
+      .catch((error: unknown) => setInstallFailed(desktopFailedText(error, onDesktop, app.name)));
+  } } } : {}) } : undefined;
 
   const header = (
     <>
       <div className="flex min-w-0 flex-1 basis-0 items-center gap-2.5">
         {app && <LocalAppMark app={app} bot={app ? botOf?.(app.botId) : undefined} size="sm" />}
         <h1 dir="auto" className={cn(TOOL_PAGE_TITLE, "min-w-0 truncate")} title={title}>{title}</h1>
-        {maker?.name && <span dir="auto" className="shrink-0 truncate text-[13px] text-ink-tertiary max-sm:hidden">{t("localApps.view.by", { bot: maker.name })}</span>}
+        {app?.sample ? <span className="shrink-0 truncate text-[13px] text-ink-tertiary max-sm:hidden">{t("localApps.card.sample")}</span>
+          : maker?.name && <span dir="auto" className="shrink-0 truncate text-[13px] text-ink-tertiary max-sm:hidden">{t("localApps.view.by", { bot: maker.name })}</span>}
         {installed && <span className="max-sm:hidden"><InstalledMark /></span>}
       </div>
       {app && (
@@ -113,7 +119,7 @@ export function LocalAppView({ id, botOf, onBack, onGoToChat, onOpenWindow }: {
                 <MessageSquare size={14} aria-hidden="true" /><span className="max-sm:sr-only">{t("localApps.card.goToChat")}</span>
               </button>
             )}
-            {!goToChat && !app.chat && <span className="sr-only">{t("localApps.view.chatGone")}</span>}
+            {!goToChat && !app.chat && !app.sample && <span className="sr-only">{t("localApps.view.chatGone")}</span>}
             {onOpenWindow && (
               <button type="button" className="ui-icon-button hover:bg-ink/[0.06] hover:text-ink" onClick={onOpenWindow}
                 aria-label={t("localApps.card.openWindow")} title={t("localApps.card.openWindow")}><AppWindowMac size={16} /></button>

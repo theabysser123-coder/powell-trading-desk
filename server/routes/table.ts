@@ -5,9 +5,11 @@ import type { RequestAuth } from "../request-auth.ts";
 import { announcementRoutes } from "./announcements.ts";
 import { cloudSyncRoutes } from "./cloud-sync.ts";
 import { forkUpdateRoutes } from "./fork-update.ts";
+import { licenseRoutes } from "./license.ts";
 import { ownMcpHttpRoutes } from "./own-mcp-http.ts";
 import { tradingRoutes } from "./trading.ts";
 import { webPanelRoutes } from "./web-panels.ts";
+import { placeProxyRoutes } from "../places/place-proxy.ts";
 
 export const PASS: unique symbol = Symbol("route.pass");
 
@@ -26,7 +28,7 @@ export interface RouteContext {
 export type RouteHandler = (ctx: RouteContext) => Promise<typeof PASS | void>;
 
 /** Modules with no wiring from index.ts are listed here; index.ts pushes the rest. */
-export const ROUTES: RouteHandler[] = [tradingRoutes, forkUpdateRoutes, cloudSyncRoutes, ownMcpHttpRoutes, webPanelRoutes, announcementRoutes];
+export const ROUTES: RouteHandler[] = [tradingRoutes, forkUpdateRoutes, placeProxyRoutes, cloudSyncRoutes, ownMcpHttpRoutes, webPanelRoutes, announcementRoutes, licenseRoutes];
 
 /** True means stop routing. A handler that wrote a response but returned PASS still counts as answered. */
 export async function dispatchRoutes(routes: readonly RouteHandler[], ctx: RouteContext): Promise<boolean> {

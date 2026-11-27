@@ -45,7 +45,7 @@ Whenever merging an upstream OpenMausBot release into this fork, **every customi
 ### E. Antigravity MCP Schema Guard & Inline Visuals
 - `server/tool-schema-profile.ts` & `server/tool-schema-profile.test.ts` — **CRITICAL:** Every array parameter in compacted MCP tool schemas MUST preserve its `items` field (otherwise Google Gemini Antigravity rejects requests with HTTP 400 `INVALID_ARGUMENT: ...items: missing field`).
 - `server/mcp-tool-schema.ts`, `server/drivers/agents-mcp.ts`, `server/drivers/agents-mcp-env.ts`, `server/drivers/turn-mcp.ts`, `server/harness-mcp-proxy.ts`, `server/harness-mcp-request.ts`, `server/routes/own-mcp-http.ts`.
-- `src/components/ChatMarkdown.tsx`, `src/components/app/AppMessage.tsx`, `shared/app-frame/jsx-page.ts` — In-chat visual rendering (React JSX / ECharts / Lightweight-Charts / inline SVG).
+- `src/components/ChatMarkdown.tsx`, `src/components/SvgDiagram.tsx`, `src/components/app/AppMessage.tsx`, `shared/app-frame/jsx-page.ts` — In-chat visual rendering (React JSX / ECharts / Lightweight-Charts / inline SVG).
 
 ### F. Custom UX Tweaks
 - `src/components/ThreadSwitcherPill.tsx` (+ `.dom.test.ts`) — Hover-open top thread pill (expands on hover without stealing composer focus, ~180ms grace leave close).

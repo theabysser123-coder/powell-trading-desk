@@ -329,6 +329,8 @@ const __APP_VERSION__: string;
         set(id: string | null, on: boolean): Promise<DesktopLendView>;
         /** macOS: asks for Accessibility and Screen Recording, the one step the system itself requires. */
         allowScreen(id: string | null): Promise<DesktopLendView>;
+        /** Opens This computer's Settings with that server's folders and terminal, once it is lent; false when it isn't. */
+        choose?(id: string | null): Promise<boolean>;
         /** The add form's switch (this app's own page only): lend to the server about to be paired at `address` if it
          * turns out to be the person's own. */
         wish?(address: string, on: boolean): Promise<boolean>;
@@ -558,10 +560,18 @@ const __APP_VERSION__: string;
        * replaces the old one. Absent in older desktop builds and on any other page. */
       appInstall?: {
         install(input: { id: string; name: string; iconPng?: Uint8Array; desktopShortcut?: boolean }): Promise<
-          | { ok: true; app: { id: string; name: string; path: string | null } }
+          | { ok: true; app: { id: string; name: string; path: string | null; desktop?: boolean } }
           | { ok: false; reason: "unavailable" | "invalid-id" | "taken" | "failed" }>;
         uninstall(id: string): Promise<{ ok: true; removed: boolean; left?: string[] } | { ok: false; reason: "invalid-id" }>;
-        list(): Promise<{ available: boolean; apps: Array<{ id: string; name: string; path: string | null }> }>;
+        /** An installed app's icon on the Desktop too (a copy of its launcher); it never makes a missing Desktop folder.
+         * Absent in older desktop builds. */
+        addToDesktop?(id: string): Promise<
+          | { ok: true; app: { id: string; name: string; path: string | null; desktop: boolean } }
+          | { ok: false; reason: "unavailable" | "invalid-id" | "not-installed" | "no-desktop" | "taken" | "failed" }>;
+        /** Removes only that Desktop item; the launcher stays. Absent in older desktop builds. */
+        removeFromDesktop?(id: string): Promise<{ ok: true; removed: boolean; left?: string[] } | { ok: false; reason: "invalid-id" }>;
+        /** `desktop`: its icon is on the Desktop too (absent in older desktop builds). */
+        list(): Promise<{ available: boolean; apps: Array<{ id: string; name: string; path: string | null; desktop?: boolean }> }>;
         /** `ids`: every saved app's id; launchers of any other app are removed. Absent in older desktop builds. */
         cleanup?(ids: string[]): Promise<string[]>;
       };
