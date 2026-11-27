@@ -2,20 +2,19 @@
 // still validates every call against its own full schema.
 type Json = Record<string, unknown>;
 
-export type ToolSchemaProfileId = "moonshot" | "antigravity";
+export type ToolSchemaProfileId = "moonshot" | "gemini";
 
 export interface ToolSchemaProfile {
   id: ToolSchemaProfileId;
   /** The provider as the person knows it, for log lines and the note a shortened tool carries. */
   provider: string;
   maxSchemaBytes: number;
-  /** Optional ceiling on the whole serialized `{ name, description, parameters }` tool entry. */
-  maxToolBytes?: number;
-  /** Optional ceiling on the sum of serialized tool entries returned by one MCP server's `tools/list`. */
-  maxListBytes?: number;
   maxDepth: number;
   /** The engine inlines local `$ref`s before it sends, so the inlined form is what the provider measures. */
   measureInlined: boolean;
+  /** A whole tool list's byte budget for a CLI that shows the model every MCP tool eagerly and silently drops the
+   * largest ones once the turn's whole tool JSON passes a character budget. */
+  maxListBytes?: number;
 }
 
 const PROFILES: Record<ToolSchemaProfileId, ToolSchemaProfile> = {
@@ -24,14 +23,14 @@ const PROFILES: Record<ToolSchemaProfileId, ToolSchemaProfile> = {
   // https://github.com/morluto/rea/issues/3654. Depth 30 is walle's default (https://github.com/MoonshotAI/walle/blob/main/conf.go).
   // Kimi Code inlines every local $ref first (normalizeKimiToolSchema in MoonshotAI/kimi-code packages/kosong).
   moonshot: { id: "moonshot", provider: "Kimi", maxSchemaBytes: 12_000, maxDepth: 30, measureInlined: true },
-  // Antigravity ACP packs MCP tools smallest-first into a ~60 KB total budget across all MCP servers; capping each tool at
-  // 1,250 B and each server list at 36 KB keeps agents + browser + data (~51 KB combined) safely inside budget so visual
-  // tools (`show_html`, `show_widget`, `data_show`) and coordination tools (`coordinate_bots`, `trigger`) all load.
-  antigravity: { id: "antigravity", provider: "Antigravity", maxSchemaBytes: 1_250, maxToolBytes: 1_250, maxListBytes: 36_000, maxDepth: 20, measureInlined: false },
+  // The Antigravity and Gemini CLIs hand the model every MCP tool eagerly and drop the largest ones, largest first, once
+  // the turn's whole tool JSON passes a character budget (about 64K, measured in milind-soni/OpenMausBot#7341): the
+  // agents list alone is about 76K, so its largest tools go missing without any refusal. The budget leaves headroom under
+  // it for the person's own MCP servers; the server still validates every call against its own full schema.
+  gemini: { id: "gemini", provider: "Gemini", maxSchemaBytes: 2_000, maxDepth: 20, measureInlined: false, maxListBytes: 56_000 },
 };
 
 export const TOOL_SCHEMA_PROFILE_ENV = "OMB_TOOL_SCHEMA_PROFILE";
-export const TOOL_SCHEMA_PROFILE_HEADER = "x-omb-tool-schema-profile";
 
 export function toolSchemaProfile(id: unknown): ToolSchemaProfile | undefined {
   return typeof id === "string" && Object.hasOwn(PROFILES, id) ? PROFILES[id as ToolSchemaProfileId] : undefined;
@@ -52,8 +51,8 @@ const OPENROUTER_HOST = /(?:^|\.)openrouter\.ai$/;
  * route one of Moonshot's models to Moonshot's endpoint. */
 export function toolSchemaProfileFor(target: { engine?: string; url?: string; model?: string }): ToolSchemaProfile | undefined {
   const host = hostOf(target.url);
-  if (target.engine === "antigravityAgent") return PROFILES.antigravity;
   if (target.engine === "kimiAgent" || MOONSHOT_HOST.test(host)) return PROFILES.moonshot;
+  if (target.engine === "antigravityAgent" || target.engine === "geminiAgent") return PROFILES.gemini;
   if (OPENROUTER_HOST.test(host) && /^moonshotai\//i.test(target.model ?? "")) return PROFILES.moonshot;
   return undefined;
 }
@@ -330,102 +329,60 @@ export function fitToolSchema(schema: Json, profile: ToolSchemaProfile): SchemaF
   return { outcome: "dropped", bytes: schemaBytes(topLevelOnly(working, 0)), from };
 }
 
-/** Validation bounds the server still enforces on every call; dropping them from an advertised schema loses no field names or types. */
-const SERVER_ENFORCED_BOUNDS = new Set([
-  "minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems", "uniqueItems", "pattern", "maxProperties",
-]);
-
-function stripBoundsAndAnnotations(schema: Json): void {
-  walk(schema, 0, (node) => {
-    for (const key of Object.keys(node)) {
-      if (ANNOTATIONS.has(key) || SERVER_ENFORCED_BOUNDS.has(key) || key.startsWith("x-")) delete node[key];
-      else if (key === "additionalProperties" && node[key] === false) delete node[key];
-    }
-  });
-}
-
-function toolEntryBytes(name: string, description: string, parameters: Json): number {
-  return schemaBytes({ name, description, parameters });
-}
-
-function fitDescriptionToBudget(name: string, description: string, parameters: Json, maxBytes: number): string | undefined {
-  if (toolEntryBytes(name, description, parameters) <= maxBytes) return description;
-  if (toolEntryBytes(name, "", parameters) > maxBytes) return undefined;
-  let lo = 0;
-  let hi = description.length;
-  let best = "";
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const candidate = shortened(description, mid) ?? "";
-    if (toolEntryBytes(name, candidate, parameters) <= maxBytes) {
-      best = candidate;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return best;
-}
-
-export type ToolEntryFit =
-  | { outcome: "kept"; description: string; schema: Json; bytes: number }
-  | { outcome: "trimmed" | "loosened" | "minimal"; description: string; schema: Json; bytes: number; from: number }
-  | { outcome: "dropped"; bytes: number; from: number };
-
-/** Fits a whole MCP tool entry (`{ name, description, parameters }`) under `profile.maxToolBytes`, keeping every field name,
- * type and enum first before shortening descriptions or collapsing nested subschemas. */
-export function fitToolEntry(
-  entry: { name: string; description: string; inputSchema: Json },
-  profile: ToolSchemaProfile,
-): ToolEntryFit {
-  const maxBytes = profile.maxToolBytes ?? profile.maxSchemaBytes;
-  const baseSchema = structuredClone(entry.inputSchema);
-  ensureArrayItems(baseSchema);
-  const from = toolEntryBytes(entry.name, entry.description, baseSchema);
-  if (from <= maxBytes && schemaDepth(baseSchema) <= profile.maxDepth) {
-    return { outcome: "kept", description: entry.description, schema: baseSchema, bytes: from };
-  }
-  const done = (outcome: "trimmed" | "loosened" | "minimal", description: string, schema: Json): ToolEntryFit => ({
-    outcome, description, schema, bytes: toolEntryBytes(entry.name, description, schema), from,
-  });
-  const tryFit = (outcome: "trimmed" | "loosened" | "minimal", schema: Json, minDescChars: number): ToolEntryFit | undefined => {
+/** A whole tool list fitted under `profile.maxListBytes`, undefined when the profile sets no budget. Least loss first,
+ * applied to every tool's schema until the list fits: fewer words deep in, then fewer words, then deep fields collapsed
+ * into typed placeholders, then only the top-level fields. Every tool keeps its name, its own description and its
+ * `required` fields; the server still validates every call against the tool's own full schema. Every array schema keeps
+ * an explicit `items` field so Gemini/Antigravity never rejects the request with HTTP 400 INVALID_ARGUMENT. */
+export function fitToolListForBudget<Tool extends { name: string; inputSchema?: unknown }>(
+  tools: readonly Tool[],
+  profile: ToolSchemaProfile | undefined,
+  log?: (line: string) => void,
+): Tool[] {
+  if (!profile?.maxListBytes) return [...tools];
+  const list = [...tools];
+  const schemaOf = (tool: Tool) => isObject(tool.inputSchema) ? (structuredClone(tool.inputSchema) as Json) : undefined;
+  const schemas = new Map(list.map((tool) => [tool, schemaOf(tool)]));
+  const bytesOf = (item: { name: string; inputSchema?: unknown }) =>
+    Buffer.byteLength(JSON.stringify({ ...item, inputSchema: schemas.get(item as Tool) ?? item.inputSchema }) ?? "");
+  // Each tool's size is measured again only when its own schema changes, so a long list is not re-measured per step.
+  const sizes = new Map(list.map((tool) => [tool, bytesOf(tool)]));
+  let total = [...sizes.values()].reduce((sum, bytes) => sum + bytes, 0);
+  const from = total;
+  if (from <= profile.maxListBytes) return list;
+  const budget: number = profile.maxListBytes;
+  const shrink = (tool: Tool, schema: Json, step: (schema: Json) => void) => {
+    step(schema);
     ensureArrayItems(schema);
-    if (schemaDepth(schema) > profile.maxDepth) return undefined;
-    if (toolEntryBytes(entry.name, entry.description, schema) <= maxBytes) return done(outcome, entry.description, schema);
-    const desc = fitDescriptionToBudget(entry.name, entry.description, schema, maxBytes);
-    if (desc !== undefined && (desc.length >= minDescChars || entry.description.length <= minDescChars)) {
-      return done(outcome, desc, schema);
-    }
-    return undefined;
+    const bytes = bytesOf(tool);
+    total += bytes - sizes.get(tool)!;
+    sizes.set(tool, bytes);
+    return total <= budget;
   };
+  const steps: ReadonlyArray<(schema: Json) => void> = [
+    (schema) => { for (let depth = schemaDepth(schema); depth >= 3; depth -= 1) shortenDescriptions(schema, depth, 0); },
+    (schema) => shortenDescriptions(schema, 0, 300),
+    (schema) => { for (let depth = schemaDepth(schema); depth >= 2; depth -= 1) collapseAt(schema, depth); },
+    (schema) => shortenDescriptions(schema, 0, 120),
+    (schema) => replace(schema, topLevelOnly(schema, 120)),
+    (schema) => replace(schema, topLevelOnly(schema, 0)),
+  ];
+  outer: for (const step of steps) {
+    for (const tool of list) {
+      const schema = schemas.get(tool);
+      if (schema && shrink(tool, schema, step)) break outer;
+    }
+  }
+  const fitted = list.map((tool) => {
+    const schema = schemas.get(tool);
+    if (schema) ensureArrayItems(schema);
+    return schema ? { ...tool, inputSchema: schema } : tool;
+  });
+  log?.(`fitted the tool list to ${profile.provider}'s list budget (${from} → ${total} bytes)`);
+  return fitted;
 
-  const working = structuredClone(entry.inputSchema);
-  stripBoundsAndAnnotations(working);
-  let hit = tryFit("trimmed", working, 420);
-  if (hit) return hit;
-
-  for (const chars of [60, 0]) {
-    shortenDescriptions(working, 2, chars);
-    hit = tryFit("trimmed", working, 320);
-    if (hit) return hit;
+  function replace(schema: Json, top: Json): void {
+    for (const key of Object.keys(schema)) delete schema[key];
+    Object.assign(schema, top);
   }
-  for (const chars of [60, 30, 0]) {
-    shortenDescriptions(working, 1, chars);
-    hit = tryFit("trimmed", working, 220);
-    if (hit) return hit;
-  }
-  for (let depth = schemaDepth(working); depth >= 2; depth -= 1) {
-    collapseAt(working, depth);
-    hit = tryFit("loosened", working, 160);
-    if (hit) return hit;
-  }
-  for (const chars of [40, 0]) {
-    const top = topLevelOnly(working, chars);
-    stripBoundsAndAnnotations(top);
-    hit = tryFit("minimal", top, 0);
-    if (hit) return hit;
-  }
-  const smallest = topLevelOnly(working, 0);
-  stripBoundsAndAnnotations(smallest);
-  return { outcome: "dropped", bytes: toolEntryBytes(entry.name, "", smallest), from };
 }

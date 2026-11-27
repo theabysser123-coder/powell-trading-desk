@@ -181,6 +181,7 @@ describe("following a notification", () => {
     server = { ...server, tasks: server.tasks!.filter((task) => task.threadId !== "finished") };
     await followNotification();
     expect(scoutNow().threadId).toBe("left-behind");
+    expect(state.notice).toEqual({ kind: "thread-gone", botName: null });
     expect(reads()).toEqual([]);
     stream().send({ kind: "bot", bot: structuredClone(server) });
     await settle();
@@ -263,7 +264,7 @@ describe("launching the app on a bot", () => {
     const switches = sent().filter((request) => request.startsWith("/api/bots/scout/tasks/"));
     expect(switches).toHaveLength(1);
     expect(switches[0]).toMatch(/^\/api\/bots\/scout\/tasks\/finished\b/);
-    expect(reads()).toEqual(["finished"]);
+    expect(reads()).toEqual([]);
     expect(scoutNow().threadId).toBe("finished");
     expect(unread("left-behind")).toBe(true);
     expect(threadsWhenTreeHidden(scoutNow(), {}).map((task) => task.threadId)).toContain("left-behind");

@@ -6,11 +6,12 @@ import { DATA_TOOLS } from "./data/tools.ts";
 import bridgedAgents from "./drivers/agents-catalog-goldens/bridged.tools-list.json" with { type: "json" };
 import fullAgents from "./drivers/agents-catalog-goldens/full.tools-list.json" with { type: "json" };
 import { createPageSchema, wideSchema } from "./testing/oversized-tool-schema.ts";
-import { fitToolEntry, fitToolSchema, schemaBytes, toolSchemaProfile, toolSchemaProfileFor, type ToolSchemaProfile } from "./tool-schema-profile.ts";
+import { fitToolListToShare, type ListedTool } from "./tool-list-budget.ts";
+import { fitToolListForBudget, fitToolSchema, schemaBytes, toolSchemaProfile, toolSchemaProfileFor, type ToolSchemaProfile } from "./tool-schema-profile.ts";
 
 type Json = Record<string, unknown>;
 const MOONSHOT = toolSchemaProfile("moonshot")!;
-const ANTIGRAVITY = toolSchemaProfile("antigravity")!;
+const GEMINI = toolSchemaProfile("gemini")!;
 const isObject = (value: unknown): value is Json => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 /** What Moonshot's validator (walle, MFJS) rejects in a fitted schema: an untyped subschema, a `required` name with no
@@ -144,8 +145,9 @@ describe("fitting a tool schema to Moonshot's per-tool limit", () => {
 });
 
 describe("which turns carry a schema profile", () => {
-  it("is Kimi Code's engine, Moonshot's own endpoint, or a Moonshot model on OpenRouter, and Antigravity for its engine", () => {
-    expect(toolSchemaProfileFor({ engine: "antigravityAgent" })).toBe(ANTIGRAVITY);
+  it("is Kimi Code's engine, Moonshot's own endpoint, or a Moonshot model on OpenRouter, and Gemini for Antigravity/Gemini CLI", () => {
+    expect(toolSchemaProfileFor({ engine: "antigravityAgent" })).toBe(GEMINI);
+    expect(toolSchemaProfileFor({ engine: "geminiAgent" })).toBe(GEMINI);
     expect(toolSchemaProfileFor({ engine: "kimiAgent" })).toBe(MOONSHOT);
     expect(toolSchemaProfileFor({ url: "https://api.moonshot.ai/v1" })).toBe(MOONSHOT);
     expect(toolSchemaProfileFor({ url: "https://api.moonshot.cn/v1", model: "kimi-k2.6" })).toBe(MOONSHOT);
@@ -153,7 +155,7 @@ describe("which turns carry a schema profile", () => {
   });
 
   it("is no other engine or endpoint, so their tool lists are unchanged", () => {
-    for (const engine of ["claudeAgent", "codex", "geminiAgent", "grokAgent", "opencodeGo", "qwenAgent", "cursorAgent", "hermesAgent"]) {
+    for (const engine of ["claudeAgent", "codex", "grokAgent", "opencodeGo", "qwenAgent", "cursorAgent", "hermesAgent"]) {
       expect(toolSchemaProfileFor({ engine, model: "kimi-k2.6" })).toBeUndefined();
     }
     expect(toolSchemaProfileFor({ url: "https://api.groq.com/openai/v1", model: "moonshotai/kimi-k2-instruct-0905" })).toBeUndefined();
@@ -161,6 +163,47 @@ describe("which turns carry a schema profile", () => {
     expect(toolSchemaProfileFor({ url: "https://moonshot.ai.example.com/v1" })).toBeUndefined();
     expect(toolSchemaProfileFor({ url: "not a url" })).toBeUndefined();
     expect(toolSchemaProfile("__proto__")).toBeUndefined();
+  });
+});
+
+describe("fitting a tool list to Gemini's list budget", () => {
+  const GEMINI = toolSchemaProfile("gemini")!;
+  const bytes = (list: unknown) => Buffer.byteLength(JSON.stringify(list));
+  const names = (list: Array<{ name: string }>) => list.map((tool) => tool.name);
+
+  it("the Antigravity and Gemini CLI engines carry the profile", () => {
+    expect(toolSchemaProfileFor({ engine: "antigravityAgent" })).toBe(GEMINI);
+    expect(toolSchemaProfileFor({ engine: "geminiAgent" })).toBe(GEMINI);
+    expect(toolSchemaProfileFor({ engine: "claudeAgent" })).toBeUndefined();
+  });
+
+  it("a list under the budget goes out untouched", () => {
+    const tools = [{ name: "small", inputSchema: { type: "object", properties: { id: { type: "string" } } } }];
+    expect(fitToolListForBudget(tools, GEMINI)).toEqual(tools);
+    expect(fitToolListForBudget(tools, undefined)).toEqual(tools);
+    expect(fitToolListForBudget(tools, { ...GEMINI, maxListBytes: undefined })).toEqual(tools);
+  });
+
+  it("the full agents list fits with every tool's name kept", () => {
+    const tools = fullAgents.tools as Array<{ name: string; description: string; inputSchema: Json }>;
+    expect(bytes(tools)).toBeGreaterThan(GEMINI.maxListBytes!);
+    const fitted = fitToolListForBudget(tools, GEMINI);
+    expect(bytes(fitted)).toBeLessThanOrEqual(GEMINI.maxListBytes!);
+    expect(names(fitted)).toEqual(names(tools));
+  });
+
+  it("each tool keeps its required fields and the trimming loses the deep words first", () => {
+    const required = ["id"];
+    const tools = [
+      { name: "wide", required: [], inputSchema: wideSchema(200) as Json },
+      { name: "page", required, inputSchema: createPageSchema() as Json },
+    ];
+    const fitted = fitToolListForBudget(tools, { ...GEMINI, maxListBytes: bytes(tools) / 2 });
+    expect(bytes(fitted)).toBeLessThanOrEqual(bytes(tools) / 2);
+    const page = fitted.find((tool) => tool.name === "page")!;
+    expect(page.required).toEqual(required);
+    expect(Object.keys((page.inputSchema as Json).properties ?? {})).toEqual(Object.keys((tools[1].inputSchema as Json).properties ?? {}));
+    expect(bytes(fitted)).toBeLessThan(bytes(tools));
   });
 });
 
@@ -177,7 +220,7 @@ describe("OpenMausBot's own tools", () => {
     }
   });
 
-  it.each(catalogs)("fit Antigravity's per-tool ceiling without dropping any tool or leaving array schemas without items: %s", (_name, tools) => {
+  it.each(catalogs)("never leave any array schema without items when fitted for Gemini/Antigravity: %s", (_name, tools) => {
     const missingItems = (node: unknown, path = "root", out: string[] = []): string[] => {
       if (!isObject(node)) return out;
       const isArr = node.type === "array" || (Array.isArray(node.type) && node.type.includes("array"));
@@ -187,13 +230,14 @@ describe("OpenMausBot's own tools", () => {
       if (Array.isArray(node.anyOf)) node.anyOf.forEach((b, i) => missingItems(b, `${path}|${i}`, out));
       return out;
     };
-    for (const tool of tools as ReadonlyArray<{ name: string; description?: string; inputSchema: Json }>) {
-      const fit = fitToolEntry({ name: tool.name, description: tool.description ?? "", inputSchema: tool.inputSchema }, ANTIGRAVITY);
-      expect([tool.name, fit.outcome]).not.toEqual([tool.name, "dropped"]);
-      expect(fit.bytes, tool.name).toBeLessThanOrEqual(ANTIGRAVITY.maxToolBytes!);
-      if (fit.outcome !== "dropped") {
-        expect(schemaBytes({ name: tool.name, description: fit.description, parameters: fit.schema }), tool.name).toBeLessThanOrEqual(ANTIGRAVITY.maxToolBytes!);
-        expect(missingItems(fit.schema), tool.name).toEqual([]);
+    const typed = tools as ReadonlyArray<ListedTool>;
+    for (const fitted of [
+      fitToolListForBudget(typed, { ...GEMINI, maxListBytes: 8_000 }),
+      fitToolListToShare(typed, 14_000).tools,
+      fitToolListToShare(typed, 1_000).tools,
+    ]) {
+      for (const tool of fitted) {
+        expect(missingItems(tool.inputSchema), tool.name).toEqual([]);
       }
     }
   });

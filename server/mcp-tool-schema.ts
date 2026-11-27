@@ -1,6 +1,6 @@
 // Strict providers (OpenAI, xAI, Bedrock, Kimi…) refuse a tool schema whose root is not a plain `type: "object"`, failing
 // the whole turn; cua-driver 0.22.1 ships such a root on browser_prepare. Servers still validate calls against their own.
-import { fitToolEntry, fitToolSchema, type ToolSchemaProfile } from "./tool-schema-profile.ts";
+import { fitToolSchema, type ToolSchemaProfile } from "./tool-schema-profile.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -105,37 +105,6 @@ export function shortenedToolNote(provider: string): string {
 /** A tool list under a provider's profile: each schema keeps a plain object root and fits, or the tool is left out.
  * Every change is one line to `log`; a tool already within the limits is the same object. */
 export function fitToolList(tools: readonly unknown[], profile: ToolSchemaProfile, log: (line: string) => void = () => {}): unknown[] {
-  if (profile.maxToolBytes !== undefined) {
-    let cap = profile.maxToolBytes;
-    const pass = (limit: number): { entries: unknown[]; bytes: number } => {
-      const effective: ToolSchemaProfile = limit === profile.maxToolBytes ? profile : { ...profile, maxToolBytes: limit, maxSchemaBytes: limit };
-      const entries: unknown[] = [];
-      let bytes = 0;
-      for (const tool of tools) {
-        if (!isObject(tool)) { entries.push(tool); continue; }
-        const rooted = providerSafeInputSchema(tool.inputSchema);
-        const name = toolName(tool);
-        const description = typeof tool.description === "string" ? tool.description : "";
-        let fit = fitToolEntry({ name, description, inputSchema: rooted }, effective);
-        if (fit.outcome === "dropped" && limit < profile.maxToolBytes!) {
-          fit = fitToolEntry({ name, description, inputSchema: rooted }, profile);
-        }
-        if (fit.outcome === "dropped") {
-          log(`left out tool "${name}": it is ${fit.from} bytes and still ${fit.bytes} at its shortest, over ${profile.provider}'s ${profile.maxToolBytes}-byte limit for one tool`);
-          continue;
-        }
-        bytes += fit.bytes;
-        entries.push(fit.outcome === "kept" && fit.schema === tool.inputSchema ? tool : { ...tool, description: fit.description, inputSchema: fit.schema });
-      }
-      return { entries, bytes };
-    };
-    let result = pass(cap);
-    while (profile.maxListBytes !== undefined && result.bytes > profile.maxListBytes && cap > 450) {
-      cap = Math.max(450, Math.floor(cap * 0.85));
-      result = pass(cap);
-    }
-    return result.entries;
-  }
   const fitted: unknown[] = [];
   for (const tool of tools) {
     if (!isObject(tool)) {
@@ -174,7 +143,9 @@ export function fitToolListResult(result: unknown, profile: ToolSchemaProfile | 
 
 /** Every listed schema gets a plain object root; under a profile each is also fitted to it. */
 /** `ownTools`: listed after the child's on its last page, in place of any child tool of the same name. */
-export function createToolListNormalizer(profile?: ToolSchemaProfile, log?: (line: string) => void, ownTools: readonly JsonObject[] = []): {
+/** `fitted`: a last step over each whole list (a single page), after the profile's. */
+export function createToolListNormalizer(profile?: ToolSchemaProfile, log?: (line: string) => void, ownTools: readonly JsonObject[] = [],
+  fitted: (tools: unknown[]) => unknown[] = (tools) => tools): {
   observeRequest: (line: string) => void;
   rewriteResponse: (line: string) => string;
 } {
@@ -210,11 +181,12 @@ export function createToolListNormalizer(profile?: ToolSchemaProfile, log?: (lin
       const listed: unknown[] = ownNames.size
         ? [...frame.result.tools.filter((tool: unknown) => !isObject(tool) || !ownNames.has(tool.name)), ...own]
         : frame.result.tools;
-      const tools = profile ? fitToolList(listed, profile, log) : listed.map((tool: unknown) => {
+      const profiled = profile ? fitToolList(listed, profile, log) : listed.map((tool: unknown) => {
         if (!isObject(tool)) return tool;
         const inputSchema = providerSafeInputSchema(tool.inputSchema);
         return inputSchema === tool.inputSchema ? tool : { ...tool, inputSchema };
       });
+      const tools = frame.result.nextCursor ? profiled : fitted(profiled);
       const changed = own.length > 0 || listed.length !== frame.result.tools.length || tools.length !== listed.length || tools.some((tool, index) => tool !== listed[index]);
       return changed ? JSON.stringify({ ...frame, result: { ...frame.result, tools } }) : line;
     },

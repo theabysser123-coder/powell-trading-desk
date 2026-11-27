@@ -16,30 +16,31 @@ const HARD_CAP = 2000;
 const LISTED_FROM = 1000;
 
 const LINES: Record<string, number> = {
-  "server/index.ts": 15258,
-  "src/state/store.tsx": 3260,
+  "server/index.ts": 15254, // fork: trading-desk-seed wiring
+  "src/state/store.tsx": 3276, // fork: tradingDeskOpen state
   "electron/main.mjs": 3124,
-  "server/store.ts": 2256,
-  "src/components/Sidebar.tsx": 1657,
-  "server/drivers/claude.ts": 2016,
+  "server/store.ts": 2255,
+  "src/components/Sidebar.tsx": 1654,
+  "server/drivers/claude.ts": 1989,
   "server/drivers/acp/core.ts": 1541,
   "server/drivers/codex.ts": 1583,
   "server/routines.ts": 1553,
   "src/components/ComputerPanel.tsx": 1782,
   "src/components/RoutineCalendarPage.tsx": 1485,
   "server/config.ts": 1227,
-  "src/components/ChatView.tsx": 1201,
+  "src/components/ChatView.tsx": 1194, // fork: Trading Desk toggle button
   "server/routine-requests.ts": 1468,
   "src/components/LocalComputerSection.tsx": 1437,
-  "src/components/CursorAvatar.tsx": 1064,
+  "src/components/CursorAvatar.tsx": 1100, // fork: liquid-chrome exhausted Head of Desk mascot
+  "src/components/ChatMarkdown.tsx": 1071, // fork: inline SVG diagram rendering
   "server/skills.ts": 1379,
-  "server/vps-computer.ts": 1287,
-  "scripts/mcp-server.ts": 1411,
+  "server/vps-computer.ts": 1283,
+  "scripts/mcp-server.ts": 1403,
   "server/boat.ts": 1253,
   "server/plan-usage.ts": 1039,
   "server/container-computer.ts": 1156,
   "src/components/ModelPicker.tsx": 1017,
-  "src/components/PhoneSetupFlow.tsx": 1088,
+  "src/components/PhoneSetupFlow.tsx": 1085,
   "server/cli.ts": 1053,
   "src/components/AttachmentPreview.tsx": 1025,
   "server/meetings/meetbot.ts": 1047,
