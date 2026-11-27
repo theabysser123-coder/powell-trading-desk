@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ChevronDown, Pin, Plus } from "lucide-react";
+import { ChevronDown, Pin, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { localizedTaskTitle } from "@/lib/task-title";
@@ -13,12 +13,14 @@ import { openTabId, type ThreadTab } from "./thread-tabs";
 
 const RESIZE_MS = 240;
 const HOVER_CLOSE_MS = 180;
+const CONFIRM_DELETE_MS = 4_000;
 const LIST_FADE = 40;
 const CLEAR_OF_CONTROLS = 24;
 const WIDEST = 720;
 const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const PART = "flex h-full min-w-0 items-center rounded-full outline-none transition-colors duration-[120ms] hover:bg-ink/[0.06] active:bg-ink/[0.08] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none";
 const CHIP = "flex h-7 max-w-42 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] leading-[18px] outline-none transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none";
+const CHIP_DELETE = "flex size-5 shrink-0 items-center justify-center rounded-full outline-none transition-all duration-[120ms] focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none";
 
 /** The widest the open pill may be while staying centred in the header and clear of the controls on either side. */
 function centredRoom(pill: HTMLElement): number {
@@ -74,6 +76,8 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
   const toggle = useRef<HTMLButtonElement>(null);
   const openByHover = useRef(false);
   const closeTimer = useRef<number | null>(null);
+  const confirmTimer = useRef<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [fade, setFade] = useState<string | undefined>();
   const active = openTabId(bot);
   const current = tabs.find((tab) => tab.threadId === active);
@@ -84,6 +88,13 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
       window.clearTimeout(closeTimer.current);
       closeTimer.current = null;
     }
+  };
+  const clearConfirmDelete = () => {
+    if (confirmTimer.current !== null) {
+      window.clearTimeout(confirmTimer.current);
+      confirmTimer.current = null;
+    }
+    setConfirmDeleteId(null);
   };
   const openSwitcher = (viaHover: boolean) => {
     clearCloseTimer();
@@ -97,6 +108,7 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
   };
   const close = (refocus: boolean) => {
     clearCloseTimer();
+    clearConfirmDelete();
     openByHover.current = false;
     setOpen(false);
     if (refocus) requestAnimationFrame(() => toggle.current?.focus());
@@ -109,11 +121,15 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
     clearCloseTimer();
     closeTimer.current = window.setTimeout(() => {
       closeTimer.current = null;
+      clearConfirmDelete();
       openByHover.current = false;
       setOpen(false);
     }, HOVER_CLOSE_MS);
   };
-  useEffect(() => () => clearCloseTimer(), []);
+  useEffect(() => () => {
+    clearCloseTimer();
+    if (confirmTimer.current !== null) window.clearTimeout(confirmTimer.current);
+  }, []);
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) close(false); };
@@ -136,8 +152,29 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
   }, [open]);
 
   const pick = (tab: ThreadTab) => {
+    clearConfirmDelete();
     if (tab.threadId !== active) dispatch({ type: "switchTask", botId: bot.id, threadId: tab.threadId });
     close(true);
+  };
+  const handleDeleteClick = (tab: ThreadTab) => {
+    if (!canWrite || tab.working) return;
+    if (tab.draft) {
+      clearConfirmDelete();
+      dispatch({ type: "switchTask", botId: bot.id, threadId: bot.threadId });
+      close(false);
+      return;
+    }
+    if (confirmDeleteId !== tab.threadId) {
+      if (confirmTimer.current !== null) window.clearTimeout(confirmTimer.current);
+      setConfirmDeleteId(tab.threadId);
+      confirmTimer.current = window.setTimeout(() => {
+        confirmTimer.current = null;
+        setConfirmDeleteId(null);
+      }, CONFIRM_DELETE_MS);
+      return;
+    }
+    clearConfirmDelete();
+    dispatch({ type: "deleteTask", botId: bot.id, threadId: tab.threadId });
   };
   const onKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); return; }
@@ -168,14 +205,41 @@ export function ThreadSwitcherPill({ bot, tabs, head, label, panelOpen, onToggle
             {tabs.map((tab) => {
               const selected = tab.threadId === active;
               const title = tabTitle(tab);
+              const canDelete = canWrite && !tab.working;
+              const armed = confirmDeleteId === tab.threadId;
               return (
-                <button key={tab.threadId} type="button" role="option" aria-selected={selected} tabIndex={selected ? 0 : -1} title={title}
-                  data-thread-chip={tab.threadId} onClick={() => pick(tab)}
-                  className={cn(CHIP, selected ? "bg-ink/[0.1] text-ink" : "text-ink-secondary hover:bg-ink/[0.06] hover:text-ink")}>
-                  {tab.working ? <span role="img" aria-label={t("chat.activity.working")} className="size-1.5 shrink-0 animate-pulse rounded-full bg-success motion-reduce:animate-none" />
-                    : tab.pinned ? <Pin size={12} role="img" aria-label={t("task.pinned")} className="shrink-0 text-ink-tertiary" /> : null}
-                  <span dir="auto" className="min-w-0 truncate">{title}</span>
-                </button>
+                <div key={tab.threadId}
+                  className={cn(
+                    "group/chip flex h-7 shrink-0 items-center rounded-full transition-colors duration-[120ms]",
+                    selected ? "bg-ink/[0.1] text-ink" : "text-ink-secondary hover:bg-ink/[0.06] hover:text-ink",
+                  )}>
+                  <button type="button" role="option" aria-selected={selected} tabIndex={selected ? 0 : -1} title={title}
+                    data-thread-chip={tab.threadId} onClick={() => pick(tab)}
+                    className={cn(CHIP, canDelete ? "pe-1.5 ps-3" : "px-3", "bg-transparent hover:bg-transparent")}>
+                    {tab.working ? <span role="img" aria-label={t("chat.activity.working")} className="size-1.5 shrink-0 animate-pulse rounded-full bg-success motion-reduce:animate-none" />
+                      : tab.pinned ? <Pin size={12} role="img" aria-label={t("task.pinned")} className="shrink-0 text-ink-tertiary" /> : null}
+                    <span dir="auto" className="min-w-0 truncate">{title}</span>
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      data-thread-chip-delete={tab.threadId}
+                      data-armed={armed ? "true" : undefined}
+                      aria-label={armed ? `Confirm delete ${title}` : `Delete ${title}`}
+                      title={armed ? "Click again to delete chat" : "Delete chat"}
+                      onClick={(event) => { event.stopPropagation(); handleDeleteClick(tab); }}
+                      className={cn(
+                        CHIP_DELETE,
+                        "me-1",
+                        armed
+                          ? "bg-rose-500/20 text-rose-400 opacity-100 hover:bg-rose-500/30"
+                          : "text-ink-tertiary opacity-0 hover:bg-ink/[0.1] hover:text-ink group-hover/chip:opacity-100 group-focus-within/chip:opacity-100",
+                      )}
+                    >
+                      {armed ? <Trash2 size={11} aria-hidden="true" /> : <X size={12} aria-hidden="true" />}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>

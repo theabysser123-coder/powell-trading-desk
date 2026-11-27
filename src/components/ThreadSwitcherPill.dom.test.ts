@@ -121,4 +121,17 @@ describe("the pill's thread switcher", () => {
     expect(q("[data-chathead-switch]")).toBeNull();
     expect(q("[data-chathead-pill]")).not.toBeNull();
   });
+
+  it("deletes an idle chat with a 2-click inline confirm and hides delete on busy threads", () => {
+    render(pepper(THREADS, "launch"));
+    act(() => q("[data-chathead-threads]")!.click());
+    expect(q("[data-thread-chip-delete='sales']"), "working thread cannot be deleted").toBeNull();
+    const del = q("[data-thread-chip-delete='trip']")!;
+    expect(del).not.toBeNull();
+    act(() => del.click());
+    expect(del.getAttribute("data-armed")).toBe("true");
+    expect(sent()).toEqual([]);
+    act(() => del.click());
+    expect(sent()).toEqual([{ type: "deleteTask", botId: "pepper", threadId: "trip" }]);
+  });
 });

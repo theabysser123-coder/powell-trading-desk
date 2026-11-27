@@ -48,7 +48,7 @@ Whenever merging an upstream OpenMausBot release into this fork, **every customi
 - `src/components/ChatMarkdown.tsx`, `src/components/SvgDiagram.tsx`, `src/components/app/AppMessage.tsx`, `shared/app-frame/jsx-page.ts` — In-chat visual rendering (React JSX / ECharts / Lightweight-Charts / inline SVG).
 
 ### F. Custom UX Tweaks
-- `src/components/ThreadSwitcherPill.tsx` (+ `.dom.test.ts`) — Hover-open top thread pill (expands on hover without stealing composer focus, ~180ms grace leave close).
+- `src/components/ThreadSwitcherPill.tsx` (+ `.dom.test.ts`) — Hover-open top thread pill (expands on hover without stealing composer focus, ~180ms grace leave close) with inline 2-click delete-chat button on every idle chat chip (`×` → red trash confirm → `deleteTask`).
 - `src/state/thread-navigation.ts` (+ `store.test.ts`, `notification-open.test.ts`) — Always resume on the **latest active chat** when restarting or returning from another view.
 - `src/components/StatusActivityRow.tsx` & `server/drivers/acp/quiet-watch.ts` — Suppress noisy `"is waiting on its model: no reply for ..."` heartbeat notices while keeping real errors and stuck-turn safeguards intact.
 - `src/components/UnreadContextOverlay.tsx` — Suppress the floating `"Previous message"` / `Go to source` / `Close` unread-context overlay in chat.
