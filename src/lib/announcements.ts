@@ -63,16 +63,23 @@ function readReleases(answer: unknown): ReleaseEntry[] {
   });
 }
 
-function ask(now: number): void {
-  if (asking || (askedAt !== null && now >= askedAt && now - askedAt < (answered ? ANNOUNCEMENT_REFRESH_MS : RETRY_MS))) return;
+function ask(now: number, force = false): Promise<void> {
+  if (!force && (asking || (askedAt !== null && now >= askedAt && now - askedAt < (answered ? ANNOUNCEMENT_REFRESH_MS : RETRY_MS)))) {
+    return Promise.resolve();
+  }
   asking = true;
   askedAt = now;
-  void api("/api/announcements").then((answer) => {
+  return api(force ? "/api/announcements?refresh=1" : "/api/announcements").then((answer) => {
     cards = readCards(answer); releases = readReleases(answer); answered = true;
     const date = Date.parse(String((answer as { updatedAt?: unknown } | null)?.updatedAt ?? ""));
     updatedAt = Number.isFinite(date) ? date : null;
   }, () => {})
     .finally(() => { asking = false; for (const listener of listeners) listener(); });
+}
+
+/** Force-refresh announcement cards and upstream release notes from the server. */
+export function refreshAnnouncements(now: () => number = Date.now): Promise<void> {
+  return ask(now(), true);
 }
 
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };

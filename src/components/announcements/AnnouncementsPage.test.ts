@@ -10,9 +10,18 @@ import type { ReleaseEntry } from "../../../shared/release-notes";
 import type { UpdaterState } from "@/lib/updater";
 import type { Announcements } from "./use-announcements";
 
-const f = vi.hoisted(() => ({ found: null as unknown as Announcements, dispatch: vi.fn(), state: { config: {} as Record<string, unknown> }, remembered: vi.fn() }));
+const f = vi.hoisted(() => ({
+  found: null as unknown as Announcements,
+  dispatch: vi.fn(),
+  state: { config: {} as Record<string, unknown>, bots: [] as Array<Record<string, unknown>> } as {
+    config: Record<string, unknown>;
+    bots?: Array<Record<string, unknown>>;
+  },
+  remembered: vi.fn(),
+  api: vi.fn(),
+}));
 vi.mock("./use-announcements", () => ({ useAnnouncements: () => f.found }));
-vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: vi.fn() }));
+vi.mock("@/state/store", () => ({ useStore: () => ({ state: f.state, dispatch: f.dispatch }), api: f.api }));
 vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
 vi.mock("../lazy-screens", () => ({ GrokMoveDialog: () => createElement("div", { "data-grok-move-dialog": "" }) }));
@@ -42,7 +51,7 @@ const rows = () => [...document.querySelectorAll<HTMLElement>("[data-announcemen
 const click = async (element: Element | null | undefined) => { expect(element).toBeTruthy(); await act(async () => { (element as HTMLElement).click(); await Promise.resolve(); }); };
 
 beforeEach(() => {
-  setLocale("en"); vi.clearAllMocks(); f.state = { config: {} };
+  setLocale("en"); vi.clearAllMocks(); f.state = { config: {}, bots: [] }; f.api.mockReset(); f.api.mockResolvedValue(undefined);
   host = document.createElement("div"); document.body.append(host);
   vi.stubGlobal("open", vi.fn());
 });
@@ -206,6 +215,74 @@ describe("Announcements", () => {
       f.found = { ...withReleases({ ...browser, branded: true }), branded: true };
       await open();
       expect(document.querySelector("[data-release]")).toBeNull();
+    });
+
+    it("on a local git fork, shows Update with AI only on releases newer than installed and launches a Head of Desk update chat", async () => {
+      const chief = { id: "chief-1", name: "Head of Desk", chiefOfStaff: true, threadId: "t-old", hidden: false };
+      f.state = { config: {}, bots: [chief] };
+      f.api.mockImplementation(async (path: string) => {
+        if (path === "/api/fork-update/status") {
+          return {
+            isFork: true,
+            installedVersion: "0.1.173",
+            branch: "main",
+            headSha: "abc1234",
+            originRemote: "theabysser123-coder/powell-trading-desk",
+            upstreamRemote: "milind-soni/OpenMausBot",
+            aheadCount: 12,
+            behindCount: 4,
+            latestTag: "0.1.175",
+            dirty: false,
+            repoPath: "/repo/powell-trading-desk",
+            manifestPath: "/repo/powell-trading-desk/FORK_MANIFEST.md",
+            checkedAt: NOW,
+          };
+        }
+        if (path === "/api/bots/chief-1/tasks") {
+          return { bot: { ...chief, threadId: "t-update-175" } };
+        }
+        if (path === "/api/fork-update/check") {
+          return {
+            isFork: true,
+            installedVersion: "0.1.173",
+            branch: "main",
+            headSha: "abc1234",
+            originRemote: "theabysser123-coder/powell-trading-desk",
+            upstreamRemote: "milind-soni/OpenMausBot",
+            aheadCount: 12,
+            behindCount: 5,
+            latestTag: "0.1.175",
+            dirty: false,
+            repoPath: "/repo/powell-trading-desk",
+            manifestPath: "/repo/powell-trading-desk/FORK_MANIFEST.md",
+            checkedAt: NOW + 1000,
+          };
+        }
+        return undefined;
+      });
+      f.found = withReleases();
+      await open();
+
+      expect(document.querySelector("[data-fork-update-banner]")?.textContent).toContain("powell-trading-desk");
+      expect(row("0.1.175").querySelector("[data-release-fork-update='0.1.175']")?.textContent).toContain("Update to 0.1.175 with AI");
+      expect(row("0.1.173").querySelector("[data-release-fork-update]"), "current version has no Update button").toBeNull();
+
+      await click(document.querySelector("[data-fork-check]"));
+      expect(f.api).toHaveBeenCalledWith("/api/fork-update/check", expect.objectContaining({ method: "POST" }));
+      expect(f.api).toHaveBeenCalledWith("/api/announcements?refresh=1");
+
+      await click(row("0.1.175").querySelector("[data-release-fork-update='0.1.175']"));
+      expect(f.api).toHaveBeenCalledWith("/api/bots/chief-1/tasks", expect.objectContaining({ method: "POST" }));
+      expect(f.dispatch).toHaveBeenCalledWith({ type: "taskSwitched", bot: expect.objectContaining({ id: "chief-1", threadId: "t-update-175" }) });
+      expect(f.dispatch).toHaveBeenCalledWith({ type: "select", id: "chief-1" });
+      expect(f.dispatch).toHaveBeenCalledWith({ type: "showChat" });
+      expect(f.dispatch).toHaveBeenCalledWith({ type: "renameTask", botId: "chief-1", threadId: "t-update-175", title: "Update OpenMausBot to v0.1.175" });
+      expect(f.dispatch).toHaveBeenCalledWith(expect.objectContaining({
+        type: "send",
+        botId: "chief-1",
+        threadId: "t-update-175",
+        text: expect.stringContaining("FORK_MANIFEST.md"),
+      }));
     });
   });
 });

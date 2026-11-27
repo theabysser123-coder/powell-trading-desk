@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { ChevronDown, Loader2, PackageOpen, RefreshCw, Rocket } from "lucide-react";
+import { ChevronDown, GitMerge, Loader2, PackageOpen, RefreshCw, Rocket } from "lucide-react";
 import type { HistoryItem } from "@/lib/announcement-history";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -19,12 +19,20 @@ export const CHIP = "rounded-full bg-ink/[0.06] px-2.5 py-1 text-[12px] text-ink
 const bare = (version: string) => version.trim().replace(/^v/i, "");
 const sameVersion = (a: string, b: string) => compareVersions(bare(a), bare(b)) === 0;
 
+/** Fork-safe AI update handler, present only when running from a local git fork with an `upstream` remote. */
+export interface ForkUpdateAction {
+  busyVersion: string | null;
+  onUpdate: (release: ReleaseEntry) => void;
+}
+
 /** What the Announcements page knows of this app's own version and its updater. */
 export interface ReleaseContext {
   /** The version running here. */
   installed: string;
   /** The updater, when it has an update downloaded and waiting for a restart. */
   updater: UpdaterState | null;
+  /** Fork-safe AI merge action for releases newer than `installed`. */
+  forkUpdate?: ForkUpdateAction | null;
 }
 
 /** An update downloaded and waiting for a restart, with its notes as an entry (for a row when the list lacks it). */
@@ -64,17 +72,31 @@ export function ReleaseRow({ item, date, context, onRestart }: {
   const panel = useId();
   const { release } = item;
   const current = sameVersion(release.version, context.installed);
+  const newer = (compareVersions(bare(release.version), bare(context.installed)) ?? 0) > 0;
   const ready = context.updater?.status === "downloaded" && !!context.updater.version && sameVersion(release.version, context.updater.version) ? context.updater : null;
+  const forkAction = newer && !ready && context.forkUpdate ? context.forkUpdate : null;
+  const forkBusy = Boolean(forkAction && forkAction.busyVersion !== null);
+  const forkThisBusy = Boolean(forkAction && forkAction.busyVersion && sameVersion(forkAction.busyVersion, release.version));
   const leads = releaseLeads(release).join(" ");
   const hasNotes = release.sections.length > 0;
   return <li data-announcement-item={item.id} data-release={release.version} className="flex items-start gap-3 px-3 py-3">
     <span aria-hidden="true" className={MARK_TILE}><Rocket size={18} /></span>
     <div className="min-w-0 flex-1">
-      <time dateTime={new Date(item.at).toISOString()} className={DATE_TEXT}>{date}</time>
+      <div className="flex flex-wrap items-center gap-2">
+        <time dateTime={new Date(item.at).toISOString()} className={DATE_TEXT}>{date}</time>
+        {forkAction && <span data-release-available className="rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent">Update available</span>}
+      </div>
       <span className={TITLE_TEXT}>{t("announcements.release.title", { version: release.version })}</span>
       {leads && <span className={BODY_TEXT}>{leads}</span>}
-      {(ready || hasNotes || current) && <div className="mt-2.5 flex flex-wrap items-center gap-2">
+      {(ready || forkAction || hasNotes || current) && <div className="mt-2.5 flex flex-wrap items-center gap-2">
         {ready && <RestartButton updater={ready} onRestart={onRestart} />}
+        {forkAction && <button type="button" data-release-fork-update={release.version} className={PRIMARY_BUTTON} disabled={forkBusy}
+          onClick={() => forkAction.onUpdate(release)}>
+          {forkThisBusy
+            ? <Loader2 size={14} aria-hidden className="animate-spin" />
+            : <GitMerge size={14} aria-hidden />}
+          {forkThisBusy ? "Starting AI update…" : `Update to ${release.version} with AI`}
+        </button>}
         {hasNotes && <button type="button" className={QUIET_BUTTON} aria-expanded={open} aria-controls={panel} onClick={() => setOpen(value => !value)}>
           {t(open ? "announcements.release.hide" : "announcements.release.seeAll")}
           <ChevronDown size={14} aria-hidden className={cn("transition-transform motion-reduce:transition-none", open && "rotate-180")} />
