@@ -38,9 +38,8 @@ Whenever merging an upstream OpenMausBot release into this fork, **every customi
   - `server/instance-fleets.ts` — Trimmed `DEFAULT_FLEET` (Antigravity Gemini 4 Neon, Claude, Codex — no unwanted Cursor login popups).
   - `server/model-manifest/model-manifest.json` — Default model & fleet adjustments preserved.
 
-### D. Liquid-Chrome Exhausted Head of Desk Mascot
-- `src/assets/mausbot-steel/cursor-*.webp` — Custom exhausted chrome mascot images.
-- `src/components/CursorAvatar.tsx`, `src/lib/mascot.ts`, `packages/phone-protocol/src/cursor-face-data.ts` — Sleepy/exhausted trader face support.
+### D. Bot Mascots & Faces
+- Uses **stock upstream OpenMausBot** mascots and faces (`src/assets/mausbot-steel/*`, `src/components/CursorAvatar.tsx`, `src/lib/mascot.ts`, `packages/phone-protocol/src/cursor-face-data.ts`) — do not re-apply the old tired/sleepy eye-bag customization.
 
 ### E. Antigravity MCP Schema Guard & Inline Visuals
 - `server/tool-schema-profile.ts` & `server/tool-schema-profile.test.ts` — **CRITICAL:** Every array parameter in compacted MCP tool schemas MUST preserve its `items` field (otherwise Google Gemini Antigravity rejects requests with HTTP 400 `INVALID_ARGUMENT: ...items: missing field`).

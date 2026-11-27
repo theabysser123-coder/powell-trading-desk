@@ -335,14 +335,14 @@ export const POOLS = {
   surprised: [21, 3],
   suspicious: [5, 14, 23],
   angry: [7, 16],
-  drowsy: [4, 22, 13],
+  drowsy: [22, 4, 13],
   happy: [19, 2, 11, 17],
   curious: [21, 3, 0, 15],
   confused: [8, 14, 5],
-  bored: [22, 4, 13],
+  bored: [0, 4, 22],
   proud: [2, 15, 8],
   shy: [24, 0, 13],
-  sad: [13, 22, 4],
+  sad: [22, 4, 13],
   laughing: [2, 11, 17],
   scared: [21, 3],
   playful: [2, 17, 11, 8],
@@ -584,8 +584,6 @@ export const CursorAvatar = React.forwardRef<CursorAvatarHandle, CursorAvatarPro
     const svg = useRef<SVGSVGElement | null>(null)
     const eye0 = useRef<SVGPathElement | null>(null)
     const eye1 = useRef<SVGPathElement | null>(null)
-    const bag0 = useRef<SVGPathElement | null>(null)
-    const bag1 = useRef<SVGPathElement | null>(null)
     const mouth = useRef<SVGPathElement | null>(null)
     const faceShift = useRef<SVGGElement | null>(null)
     const bodyGroup = useRef<SVGGElement | null>(null)
@@ -790,59 +788,27 @@ export const CursorAvatar = React.forwardRef<CursorAvatarHandle, CursorAvatarPro
         const base = p.eyeScale ?? 1
         const blink = blinkScale(e, now)
 
-        const tiredState = p.state === 'drowsy' || p.state === 'sad' || p.state === 'sleeping' || p.state === 'bored' || p.state === 'powering-down'
-
         rings.forEach((ring, index) => {
           const el = index === 0 ? eye0.current : eye1.current
-          const bagEl = index === 0 ? bag0.current : bag1.current
           if (!el) return
           const c = ringCentre(ring)
           const baseLongitude = Math.asin(clamp((c[0] - SPHERE_C) / SPHERE_R, -1, 1))
           const longitude = baseLongitude + radians
           const depth = Math.cos(longitude)
           const perspective = Math.max(depth, 0.02) / Math.max(Math.cos(baseLongitude), 0.02)
-          const eyeTransform = `translate(${(SPHERE_C + SPHERE_R * Math.sin(longitude) + gx).toFixed(2)} ${(
-            c[1] + gy
-          ).toFixed(2)}) scale(${clamp(perspective * base, 0.02, 2.4).toFixed(4)} ${clamp(
-            blink * base,
-            0.02,
-            2.4
-          ).toFixed(4)}) translate(${(-c[0]).toFixed(2)} ${(-c[1]).toFixed(2)})`
           put(el, 'd', toPath(ring))
-          put(el, 'transform', eyeTransform)
+          put(
+            el,
+            'transform',
+            `translate(${(SPHERE_C + SPHERE_R * Math.sin(longitude) + gx).toFixed(2)} ${(
+              c[1] + gy
+            ).toFixed(2)}) scale(${clamp(perspective * base, 0.02, 2.4).toFixed(4)} ${clamp(
+              blink * base,
+              0.02,
+              2.4
+            ).toFixed(4)}) translate(${(-c[0]).toFixed(2)} ${(-c[1]).toFixed(2)})`
+          )
           put(el, 'opacity', depth > 0.02 ? '1' : '0')
-
-          if (bagEl) {
-            if (tiredState && depth > 0.02) {
-              let minX = Infinity
-              let maxX = -Infinity
-              let maxY = -Infinity
-              for (const pt of ring) {
-                if (pt[0] < minX) minX = pt[0]
-                if (pt[0] > maxX) maxX = pt[0]
-                if (pt[1] > maxY) maxY = pt[1]
-              }
-              const span = (maxX - minX) * 0.38
-              const bagY = maxY + 8.5
-              const sag = 8.5
-              const tilt = index === 0 ? 3.5 : -2.5
-              put(
-                bagEl,
-                'd',
-                `M${(c[0] - span).toFixed(2)} ${(bagY - tilt).toFixed(2)} Q${c[0].toFixed(2)} ${(bagY + sag).toFixed(2)} ${(c[0] + span).toFixed(2)} ${(bagY + tilt).toFixed(2)}`
-              )
-              put(
-                bagEl,
-                'transform',
-                `translate(${(SPHERE_C + SPHERE_R * Math.sin(longitude) + gx).toFixed(2)} ${(
-                  c[1] + gy
-                ).toFixed(2)}) scale(${clamp(perspective * base, 0.02, 2.4).toFixed(4)} ${clamp(base, 0.02, 2.4).toFixed(4)}) translate(${(-c[0]).toFixed(2)} ${(-c[1]).toFixed(2)})`
-              )
-              put(bagEl, 'opacity', '0.5')
-            } else {
-              put(bagEl, 'opacity', '0')
-            }
-          }
         })
 
         const mouthEl = mouth.current
@@ -1023,8 +989,6 @@ export const CursorAvatar = React.forwardRef<CursorAvatarHandle, CursorAvatarPro
       <g clipPath={`url(#${uid}-clip)`} visibility={picture ? 'hidden' : undefined}>
         <g transform={anchorTransform(silhouette.anchor)}><g ref={faceShift}>
           <path ref={eye0} fill={ink} /><path ref={eye1} fill={ink} />
-          <path ref={bag0} fill="none" stroke={ink} strokeWidth={5.2} strokeLinecap="round" opacity={0} />
-          <path ref={bag1} fill="none" stroke={ink} strokeWidth={5.2} strokeLinecap="round" opacity={0} />
           {showMouth && <path ref={mouth} fill="none" stroke={ink} strokeWidth={mouthStroke} strokeLinecap="round" />}
         </g></g>
       </g>
