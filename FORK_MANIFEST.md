@@ -55,11 +55,11 @@ Whenever merging an upstream OpenMausBot release into this fork, **every customi
 
 ### G. Fork-Safe AI Update System (Announcements Tab)
 - `FORK_MANIFEST.md` (this file)
-- `server/routes/fork-update.ts` (+ `server/routes/fork-update.test.ts`) — `/api/fork-update/status` & `/api/fork-update/check` endpoints, registered in `server/routes/table.ts` & `server/request-auth.ts`.
+- `server/routes/fork-update.ts` (+ `server/routes/fork-update.test.ts`) — `/api/fork-update/{status,check,apply,cancel,dismiss,restart}` endpoints, silent hidden-task AI update runner (`configureForkUpdateRunner`), live step progress & disk persistence, and 1-click systemd restart. Registered in `server/routes/table.ts`, `server/request-auth.ts`, and `server/index.ts` (including `!isForkUpdateTask(task)` filter in `wireBot` & `wireTrustedApprovalBot` so background updates never create visible chat threads).
 - `server/routes/announcements.ts` — Supports `?refresh=1` force-refresh of upstream announcements & release notes.
-- `src/lib/fork-update.ts` — Client helper, update prompt builder, and dedicated chat thread launcher.
+- `src/lib/fork-update.ts` — Client API helpers for silent background AI updates, cancel/dismiss, and server restart + health-check reload.
 - `src/lib/announcements.ts` — Exports `refreshAnnouncements()`.
-- `src/components/announcements/AnnouncementsPage.tsx`, `src/components/announcements/ReleaseRow.tsx`, `src/components/announcements/AnnouncementsPage.test.ts` — Fork sync bar, **Check for updates**, and per-release **Update with AI** buttons.
+- `src/components/announcements/AnnouncementsPage.tsx`, `src/components/announcements/ReleaseRow.tsx`, `src/components/announcements/AnnouncementsPage.test.ts` — Fork sync bar, **Check for updates**, silent in-page background progress & **Restart server & reload**, and per-release **Update with AI** buttons.
 
 ---
 

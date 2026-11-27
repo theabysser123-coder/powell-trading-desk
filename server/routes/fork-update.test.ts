@@ -6,10 +6,16 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  configureForkUpdateRunner,
+  FORK_UPDATE_APPLY_PATH,
+  FORK_UPDATE_CANCEL_PATH,
   FORK_UPDATE_CHECK_PATH,
+  FORK_UPDATE_DISMISS_PATH,
+  FORK_UPDATE_RESTART_PATH,
   FORK_UPDATE_STATUS_PATH,
   forkUpdateRoutes,
   inspectForkStatus,
+  isForkUpdateTask,
   parseAheadBehind,
   pickLatestSemverTag,
   resetForkUpdateCacheForTest,
@@ -159,5 +165,89 @@ describe("forkUpdateRoutes", () => {
     const serviceCheck = makeCtx(FORK_UPDATE_CHECK_PATH, "POST", "service");
     await forkUpdateRoutes(serviceCheck.ctx);
     expect(serviceCheck.out.status).toBe(403);
+  });
+
+  it("identifies hidden fork-update tasks by routineRunId prefix", () => {
+    expect(isForkUpdateTask({ routineRunId: "fork-update-abc" })).toBe(true);
+    expect(isForkUpdateTask({ routineRunId: "routine-123" })).toBe(false);
+    expect(isForkUpdateTask({})).toBe(false);
+  });
+
+  it("runs a silent background update, cleans up its hidden task on completion, and supports restart + dismiss", async () => {
+    const upstream = makeTempDir("fork-bg-upstream-");
+    git(upstream, "init", "-b", "main");
+    writeFileSync(join(upstream, "package.json"), JSON.stringify({ version: "0.1.184" }));
+    git(upstream, "add", ".");
+    git(upstream, "commit", "-m", "base");
+    git(upstream, "tag", "v0.1.184");
+
+    const fork = makeTempDir("fork-bg-local-");
+    git(fork, "clone", upstream, ".");
+    git(fork, "remote", "rename", "origin", "upstream");
+    git(fork, "remote", "add", "origin", "https://github.com/theabysser123-coder/powell-trading-desk.git");
+
+    const dataDir = makeTempDir("fork-bg-data-");
+    const deleted: Array<{ botId: string; threadId: string }> = [];
+    const restarted = vi.fn();
+    let settleFn: ((outcome: { ok: boolean; error?: string; text?: string }) => void) | null = null;
+    const liveMessages = [
+      { role: "bot", kind: "activity", tool: { name: "run_command", summary: "Merging upstream v0.1.185" } },
+    ];
+
+    configureForkUpdateRunner({
+      dataDir,
+      repoRoot: fork,
+      findBot: () => ({ id: "chief-1", name: "Head of Desk" }),
+      createHiddenTask: (_botId, routineRunId) => ({ threadId: `hidden-${routineRunId}` }),
+      deleteHiddenTask: (botId, threadId) => { deleted.push({ botId, threadId }); },
+      messagesFor: () => liveMessages,
+      startTurn: async (_botId, _threadId, _prompt, onSettled) => { settleFn = onSettled; },
+      interruptThread: async () => {},
+      restartServer: restarted,
+    });
+
+    const applyReq = makeCtx(FORK_UPDATE_APPLY_PATH, "POST", "owner");
+    applyReq.ctx.readBody = vi.fn(async () => ({ targetVersion: "0.1.185", highlights: ["Faster startup."] }));
+    await forkUpdateRoutes(applyReq.ctx);
+    expect(applyReq.out.status).toBe(202);
+    expect((applyReq.out.body as { job: { status: string; targetVersion: string } }).job.status).toBe("running");
+
+    // Live status exposes current step while running
+    const midStatus = makeCtx(FORK_UPDATE_STATUS_PATH, "GET", "owner");
+    await forkUpdateRoutes(midStatus.ctx);
+    expect((midStatus.out.body as { job: { currentStep: string } }).job.currentStep).toBe("Merging upstream v0.1.185");
+
+    // Simulate successful merge advancing package.json to 0.1.185 + backup tag
+    git(fork, "tag", "backup/pre-update-v0.1.185-test");
+    writeFileSync(join(fork, "package.json"), JSON.stringify({ version: "0.1.185" }));
+    git(fork, "commit", "-am", "merge v0.1.185");
+
+    settleFn!({ ok: true, text: "Updated cleanly to v0.1.185." });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0]!.botId).toBe("chief-1");
+
+    const doneStatus = makeCtx(FORK_UPDATE_STATUS_PATH, "GET", "owner");
+    await forkUpdateRoutes(doneStatus.ctx);
+    const doneJob = (doneStatus.out.body as { job: { status: string; backupTag: string; needsRestart: boolean; summary: string } }).job;
+    expect(doneJob.status).toBe("succeeded");
+    expect(doneJob.backupTag).toBe("backup/pre-update-v0.1.185-test");
+    expect(doneJob.needsRestart).toBe(true);
+    expect(doneJob.summary).toContain("v0.1.185");
+
+    const restartReq = makeCtx(FORK_UPDATE_RESTART_PATH, "POST", "owner");
+    await forkUpdateRoutes(restartReq.ctx);
+    expect(restartReq.out.status).toBe(202);
+    expect(restarted).toHaveBeenCalledTimes(1);
+
+    const dismissReq = makeCtx(FORK_UPDATE_DISMISS_PATH, "POST", "owner");
+    await forkUpdateRoutes(dismissReq.ctx);
+    expect(dismissReq.out.status).toBe(200);
+
+    // Also verify cancel works when idle
+    const cancelReq = makeCtx(FORK_UPDATE_CANCEL_PATH, "POST", "owner");
+    await forkUpdateRoutes(cancelReq.ctx);
+    expect(cancelReq.out.status).toBe(200);
   });
 });

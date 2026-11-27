@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Cloud, Gift, GitBranch, GitMerge, Loader2, Megaphone, RefreshCw, Rocket, ShieldCheck, UsersRound } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Cloud, Gift, GitBranch, GitMerge, Loader2, Megaphone, RefreshCw, Rocket, ShieldCheck, Square, UsersRound, X } from "lucide-react";
 import type { CloudOffer } from "../../../electron/cloud-home.mjs";
 import { itemSeen, rememberNoticeSeen, withDownloadedUpdate, type HistoryAction, type HistoryItem, type HistoryMark, type HistoryModal } from "@/lib/announcement-history";
 import { refreshAnnouncements } from "@/lib/announcements";
 import { appVersion, desktopAppVersion } from "@/lib/app-links";
 import { openEmailDraft, openExternalLink } from "@/lib/app-links";
 import { cn } from "@/lib/cn";
-import { checkForkUpdates, fetchForkUpdateStatus, findUpdateBot, isNewerVersion, launchForkUpdateChat, type ForkUpdateStatus } from "@/lib/fork-update";
+import {
+  cancelBackgroundForkUpdate,
+  checkForkUpdates,
+  dismissBackgroundForkUpdate,
+  fetchForkUpdateStatus,
+  formatElapsed,
+  isNewerVersion,
+  restartForkServer,
+  startBackgroundForkUpdate,
+  waitForServerRestart,
+  type ForkUpdateJobView,
+  type ForkUpdateStatus,
+} from "@/lib/fork-update";
 import { EARLIER_WHATS_NEW_NOTICE } from "@/lib/notices";
 import { activeLocale, t } from "@/lib/i18n";
 import { reportTeams, teamsAction } from "@/lib/teams-whats-new";
@@ -153,25 +165,170 @@ function Replay({ modal, found, whatsNew, onClose }: { modal: HistoryModal; foun
   return <GrokMovePopup onDone={action => { if (action === "start") setMoving(true); else done(); }} />;
 }
 
-/** Compact status card for local git forks: shows installed vs upstream version, manual check, and 1-click AI merge. */
+/** Inline status panel for a silent background AI update (running, succeeded, failed, or cancelled). */
+function BackgroundUpdateProgress({
+  job,
+  nowMs,
+  restarting,
+  onCancel,
+  onDismiss,
+  onRestart,
+}: {
+  job: ForkUpdateJobView;
+  nowMs: number;
+  restarting: boolean;
+  onCancel: () => void;
+  onDismiss: () => void;
+  onRestart: () => void;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+  const running = job.status === "running";
+  const succeeded = job.status === "succeeded";
+  const failed = job.status === "failed";
+  const elapsed = formatElapsed(job.startedAt, job.finishedAt, nowMs);
+  const hasDetails = Boolean(job.summary || job.log.length > 1);
+
+  return (
+    <div
+      data-fork-job={job.status}
+      className={cn(
+        "mt-3 rounded-xl border px-3.5 py-3 text-[12.5px]",
+        running && "border-accent/30 bg-accent/[0.06]",
+        succeeded && "border-emerald-500/30 bg-emerald-500/[0.06]",
+        failed && "border-rose-500/30 bg-rose-500/[0.06]",
+        job.status === "cancelled" && "border-hairline/60 bg-ink/[0.03]",
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {running && <Loader2 size={14} aria-hidden className="shrink-0 animate-spin text-accent" />}
+          {succeeded && <CheckCircle2 size={14} aria-hidden className="shrink-0 text-emerald-400" />}
+          {failed && <AlertCircle size={14} aria-hidden className="shrink-0 text-rose-400" />}
+          <span className="font-medium text-ink">
+            {running && `Updating v${job.fromVersion} → v${job.targetVersion} in background`}
+            {succeeded && `Updated to v${job.targetVersion} in background`}
+            {failed && `Background update to v${job.targetVersion} failed`}
+            {job.status === "cancelled" && `Update to v${job.targetVersion} cancelled`}
+          </span>
+          <span className="font-mono text-[11.5px] text-ink-tertiary">{elapsed}</span>
+          {job.backupTag && (
+            <span className="rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[11px] text-ink-secondary">
+              backup: {job.backupTag}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {hasDetails && (
+            <button
+              type="button"
+              data-fork-job-details-toggle
+              className="ui-button min-h-7 gap-1 px-2.5 py-1 text-[12px]"
+              aria-expanded={showDetails}
+              onClick={() => setShowDetails((open) => !open)}
+            >
+              {showDetails ? "Hide details" : "Details"}
+              <ChevronDown size={12} aria-hidden className={cn("transition-transform", showDetails && "rotate-180")} />
+            </button>
+          )}
+          {running && (
+            <button
+              type="button"
+              data-fork-job-cancel
+              className="ui-button min-h-7 gap-1 px-2.5 py-1 text-[12px] text-rose-300"
+              onClick={onCancel}
+            >
+              <Square size={11} aria-hidden />
+              Cancel
+            </button>
+          )}
+          {succeeded && job.needsRestart && (
+            <button
+              type="button"
+              data-fork-job-restart
+              className={PRIMARY_BUTTON}
+              disabled={restarting}
+              onClick={onRestart}
+            >
+              <RefreshCw size={13} aria-hidden className={cn(restarting && "animate-spin")} />
+              {restarting ? "Restarting server…" : "Restart server & reload"}
+            </button>
+          )}
+          {!running && (
+            <button
+              type="button"
+              data-fork-job-dismiss
+              aria-label="Dismiss update status"
+              className="ui-button min-h-7 px-2 py-1 text-ink-tertiary hover:text-ink"
+              onClick={onDismiss}
+            >
+              <X size={13} aria-hidden />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {running && job.currentStep && (
+        <p data-fork-job-step className="mt-1.5 truncate text-[12px] text-ink-secondary">
+          {job.currentStep}
+        </p>
+      )}
+      {failed && job.error && (
+        <p role="alert" className="mt-1.5 text-[12px] text-rose-300">
+          {job.error}
+        </p>
+      )}
+      {succeeded && !showDetails && job.summary && (
+        <p className="mt-1.5 line-clamp-2 text-[12px] text-ink-secondary">
+          {job.summary}
+        </p>
+      )}
+      {showDetails && (
+        <div data-fork-job-details className="mt-2.5 space-y-2 border-t border-hairline/40 pt-2.5">
+          {job.summary && (
+            <pre className="whitespace-pre-wrap break-words rounded-lg bg-ink/[0.04] p-2.5 font-sans text-[12px] leading-[18px] text-ink-secondary">
+              {job.summary}
+            </pre>
+          )}
+          {job.log.length > 0 && (
+            <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-ink/[0.04] p-2.5 font-mono text-[11px] leading-[16px] text-ink-tertiary">
+              {job.log.map((line, index) => (
+                <li key={index} className="truncate">{line}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Compact status card for local git forks: shows installed vs upstream version, manual check, and silent background AI merge. */
 function ForkUpdateBanner({
   status,
   checking,
-  busyVersion,
+  startingVersion,
+  restarting,
+  nowMs,
   error,
-  canLaunch,
   latestRelease,
   onCheck,
   onUpdate,
+  onCancel,
+  onDismiss,
+  onRestart,
 }: {
   status: ForkUpdateStatus;
   checking: boolean;
-  busyVersion: string | null;
+  startingVersion: string | null;
+  restarting: boolean;
+  nowMs: number;
   error: string | null;
-  canLaunch: boolean;
   latestRelease: ReleaseEntry | null;
   onCheck: () => void;
   onUpdate: (version: string, release: ReleaseEntry | null) => void;
+  onCancel: () => void;
+  onDismiss: () => void;
+  onRestart: () => void;
 }) {
   const newestVersion = latestRelease && isNewerVersion(latestRelease.version, status.installedVersion)
     ? latestRelease.version
@@ -182,7 +339,9 @@ function ForkUpdateBanner({
   const targetVersion = newestVersion ?? "upstream/main";
   const targetLabel = newestVersion ? `v${newestVersion}` : "upstream/main";
   const matchingRelease = newestVersion && latestRelease?.version === newestVersion ? latestRelease : null;
-  const busy = busyVersion !== null;
+  const job = status.job ?? null;
+  const running = job?.status === "running" || startingVersion !== null;
+  const canLaunch = status.canBackgroundUpdate !== false;
 
   return (
     <section
@@ -216,7 +375,7 @@ function ForkUpdateBanner({
           <p className="mt-1.5 flex items-start gap-1.5 text-[12.5px] leading-[18px] text-ink-secondary">
             <ShieldCheck size={14} className="mt-0.5 shrink-0 text-ink-tertiary" aria-hidden />
             <span>
-              Pick any newer release below or update now — Head of Desk creates a backup tag, merges via{" "}
+              Runs silently in the background (no chat thread opened) — creates a backup tag, merges via{" "}
               <code className="rounded bg-ink/[0.06] px-1 font-mono text-[11.5px]">FORK_MANIFEST.md</code>,
               and verifies your Trading Desk Canvas, bots, and custom tweaks stay intact.
             </span>
@@ -227,7 +386,7 @@ function ForkUpdateBanner({
             type="button"
             data-fork-check
             className={QUIET_BUTTON}
-            disabled={checking || busy}
+            disabled={checking || running || restarting}
             onClick={onCheck}
           >
             <RefreshCw size={14} aria-hidden className={cn(checking && "animate-spin")} />
@@ -238,15 +397,25 @@ function ForkUpdateBanner({
               type="button"
               data-fork-update-latest
               className={PRIMARY_BUTTON}
-              disabled={busy}
+              disabled={running || restarting}
               onClick={() => onUpdate(targetVersion, matchingRelease)}
             >
-              {busy ? <Loader2 size={14} aria-hidden className="animate-spin" /> : <GitMerge size={14} aria-hidden />}
-              {busy ? "Starting AI update…" : `Update to ${targetLabel} with AI`}
+              {running ? <Loader2 size={14} aria-hidden className="animate-spin" /> : <GitMerge size={14} aria-hidden />}
+              {running ? "Updating in background…" : `Update to ${targetLabel} with AI`}
             </button>
           )}
         </div>
       </div>
+      {job && (
+        <BackgroundUpdateProgress
+          job={job}
+          nowMs={nowMs}
+          restarting={restarting}
+          onCancel={onCancel}
+          onDismiss={onDismiss}
+          onRestart={onRestart}
+        />
+      )}
       {error && (
         <p role="alert" className="mt-2 text-[12.5px] text-rose-400">
           {error}
@@ -258,7 +427,7 @@ function ForkUpdateBanner({
 
 /** Everything announced to this person, newest first. Opening it clears the red dot (here and on their other pages). */
 export function AnnouncementsPage() {
-  const { state, dispatch } = useStore();
+  const { dispatch } = useStore();
   const found = useAnnouncements();
   const [open, setOpen] = useState<HistoryModal | null>(null);
   const back = useRef<HTMLButtonElement>(null);
@@ -266,13 +435,16 @@ export function AnnouncementsPage() {
   const [openedAt] = useState(Date.now);
   const [forkStatus, setForkStatus] = useState<ForkUpdateStatus | null>(null);
   const [checkingFork, setCheckingFork] = useState(false);
-  const [busyVersion, setBusyVersion] = useState<string | null>(null);
+  const [startingVersion, setStartingVersion] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now);
   const [forkError, setForkError] = useState<string | null>(null);
 
   const items = withDownloadedUpdate(found.items, downloadedUpdate(updater, openedAt), found.branded, openedAt);
   const whatsNew = useWhatsNewView(found, found.items.some(item => item.source === "built-in" && "modal" in item.entry.open && item.entry.open.modal === "whats-new"));
-  const updateBot = findUpdateBot(state.bots);
   const latestRelease = items.find((item): item is Extract<HistoryItem, { source: "release" }> => item.source === "release")?.release ?? null;
+  const activeJob = forkStatus?.job ?? null;
+  const isJobRunning = activeJob?.status === "running";
 
   useEffect(() => { back.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => { if (found.unread) found.markRead(); }, [found.unread]);
@@ -283,6 +455,29 @@ export function AnnouncementsPage() {
     });
     return () => { active = false; };
   }, []);
+
+  // Poll silent background job status every 2.5s while running and tick the elapsed clock.
+  useEffect(() => {
+    if (!isJobRunning) return;
+    let active = true;
+    const poll = window.setInterval(() => {
+      void fetchForkUpdateStatus().then((next) => {
+        if (!active || !next?.isFork) return;
+        setForkStatus(next);
+        if (next.job?.status !== "running") {
+          void refreshAnnouncements();
+        }
+      });
+    }, 2_500);
+    const tick = window.setInterval(() => {
+      if (active) setNowMs(Date.now());
+    }, 1_000);
+    return () => {
+      active = false;
+      window.clearInterval(poll);
+      window.clearInterval(tick);
+    };
+  }, [isJobRunning]);
 
   const handleCheckForkUpdates = async () => {
     setCheckingFork(true);
@@ -298,14 +493,55 @@ export function AnnouncementsPage() {
   };
 
   const handleForkUpdate = async (targetVersion: string, release: ReleaseEntry | null) => {
-    if (!forkStatus || !updateBot || busyVersion) return;
-    setBusyVersion(targetVersion);
+    if (!forkStatus || isJobRunning || startingVersion) return;
+    setStartingVersion(targetVersion);
+    setForkError(null);
+    setNowMs(Date.now());
+    try {
+      const job = await startBackgroundForkUpdate({ targetVersion, release });
+      setForkStatus((prev) => (prev ? { ...prev, job } : prev));
+    } catch (error) {
+      setForkError(error instanceof Error ? error.message : "Could not start the background update.");
+    } finally {
+      setStartingVersion(null);
+    }
+  };
+
+  const handleCancelForkUpdate = async () => {
     setForkError(null);
     try {
-      await launchForkUpdateChat({ bot: updateBot, status: forkStatus, targetVersion, release, dispatch });
+      const job = await cancelBackgroundForkUpdate();
+      setForkStatus((prev) => (prev ? { ...prev, job } : prev));
     } catch (error) {
-      setForkError(error instanceof Error ? error.message : "Could not start the AI update chat.");
-      setBusyVersion(null);
+      setForkError(error instanceof Error ? error.message : "Could not cancel the update.");
+    }
+  };
+
+  const handleDismissForkJob = async () => {
+    setForkError(null);
+    try {
+      await dismissBackgroundForkUpdate();
+      setForkStatus((prev) => (prev ? { ...prev, job: null } : prev));
+    } catch (error) {
+      setForkError(error instanceof Error ? error.message : "Could not dismiss update status.");
+    }
+  };
+
+  const handleRestartServer = async () => {
+    setRestarting(true);
+    setForkError(null);
+    try {
+      await restartForkServer();
+      const backUp = await waitForServerRestart();
+      if (backUp) {
+        window.location.reload();
+      } else {
+        setRestarting(false);
+        setForkError("Server is still restarting — refresh the page in a few seconds.");
+      }
+    } catch (error) {
+      setRestarting(false);
+      setForkError(error instanceof Error ? error.message : "Could not restart the server.");
     }
   };
 
@@ -318,7 +554,8 @@ export function AnnouncementsPage() {
   };
 
   const installedVersion = forkStatus?.isFork ? forkStatus.installedVersion : desktopAppVersion();
-  const forkUpdateAction = forkStatus?.isFork && updateBot
+  const busyVersion = isJobRunning ? activeJob.targetVersion : startingVersion;
+  const forkUpdateAction = forkStatus?.isFork && forkStatus.canBackgroundUpdate !== false
     ? { busyVersion, onUpdate: (release: ReleaseEntry) => void handleForkUpdate(release.version, release) }
     : null;
 
@@ -333,12 +570,16 @@ export function AnnouncementsPage() {
             <ForkUpdateBanner
               status={forkStatus}
               checking={checkingFork}
-              busyVersion={busyVersion}
+              startingVersion={startingVersion}
+              restarting={restarting}
+              nowMs={nowMs}
               error={forkError}
-              canLaunch={Boolean(updateBot)}
               latestRelease={latestRelease}
               onCheck={() => void handleCheckForkUpdates()}
               onUpdate={(version, release) => void handleForkUpdate(version, release)}
+              onCancel={() => void handleCancelForkUpdate()}
+              onDismiss={() => void handleDismissForkJob()}
+              onRestart={() => void handleRestartServer()}
             />
           )}
           <AnnouncementList items={items} onModal={setOpen} canReopen={modal => modal !== "whats-new" || whatsNew !== null} to={to}

@@ -95,7 +95,7 @@ export function ReleaseRow({ item, date, context, onRestart }: {
           {forkThisBusy
             ? <Loader2 size={14} aria-hidden className="animate-spin" />
             : <GitMerge size={14} aria-hidden />}
-          {forkThisBusy ? "Starting AI update…" : `Update to ${release.version} with AI`}
+          {forkThisBusy ? "Updating in background…" : `Update to ${release.version} with AI`}
         </button>}
         {hasNotes && <button type="button" className={QUIET_BUTTON} aria-expanded={open} aria-controls={panel} onClick={() => setOpen(value => !value)}>
           {t(open ? "announcements.release.hide" : "announcements.release.seeAll")}

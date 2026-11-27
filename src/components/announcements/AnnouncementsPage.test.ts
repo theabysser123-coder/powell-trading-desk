@@ -217,9 +217,21 @@ describe("Announcements", () => {
       expect(document.querySelector("[data-release]")).toBeNull();
     });
 
-    it("on a local git fork, shows Update with AI only on releases newer than installed and launches a Head of Desk update chat", async () => {
-      const chief = { id: "chief-1", name: "Head of Desk", chiefOfStaff: true, threadId: "t-old", hidden: false };
-      f.state = { config: {}, bots: [chief] };
+    it("on a local git fork, runs Update with AI silently in the background without opening a chat thread", async () => {
+      const runningJob = {
+        id: "job-175",
+        status: "running",
+        fromVersion: "0.1.173",
+        targetVersion: "0.1.175",
+        startedAt: NOW,
+        finishedAt: null,
+        currentStep: "Merging upstream v0.1.175…",
+        log: ["Starting silent background merge…", "Merging upstream v0.1.175…"],
+        summary: null,
+        error: null,
+        backupTag: null,
+        needsRestart: false,
+      };
       f.api.mockImplementation(async (path: string) => {
         if (path === "/api/fork-update/status") {
           return {
@@ -236,10 +248,9 @@ describe("Announcements", () => {
             repoPath: "/repo/powell-trading-desk",
             manifestPath: "/repo/powell-trading-desk/FORK_MANIFEST.md",
             checkedAt: NOW,
+            canBackgroundUpdate: true,
+            job: null,
           };
-        }
-        if (path === "/api/bots/chief-1/tasks") {
-          return { bot: { ...chief, threadId: "t-update-175" } };
         }
         if (path === "/api/fork-update/check") {
           return {
@@ -256,7 +267,15 @@ describe("Announcements", () => {
             repoPath: "/repo/powell-trading-desk",
             manifestPath: "/repo/powell-trading-desk/FORK_MANIFEST.md",
             checkedAt: NOW + 1000,
+            canBackgroundUpdate: true,
+            job: null,
           };
+        }
+        if (path === "/api/fork-update/apply") {
+          return { ok: true, job: runningJob };
+        }
+        if (path === "/api/fork-update/cancel") {
+          return { ok: true, job: { ...runningJob, status: "cancelled", finishedAt: NOW + 5000 } };
         }
         return undefined;
       });
@@ -272,17 +291,19 @@ describe("Announcements", () => {
       expect(f.api).toHaveBeenCalledWith("/api/announcements?refresh=1");
 
       await click(row("0.1.175").querySelector("[data-release-fork-update='0.1.175']"));
-      expect(f.api).toHaveBeenCalledWith("/api/bots/chief-1/tasks", expect.objectContaining({ method: "POST" }));
-      expect(f.dispatch).toHaveBeenCalledWith({ type: "taskSwitched", bot: expect.objectContaining({ id: "chief-1", threadId: "t-update-175" }) });
-      expect(f.dispatch).toHaveBeenCalledWith({ type: "select", id: "chief-1" });
-      expect(f.dispatch).toHaveBeenCalledWith({ type: "showChat" });
-      expect(f.dispatch).toHaveBeenCalledWith({ type: "renameTask", botId: "chief-1", threadId: "t-update-175", title: "Update OpenMausBot to v0.1.175" });
-      expect(f.dispatch).toHaveBeenCalledWith(expect.objectContaining({
-        type: "send",
-        botId: "chief-1",
-        threadId: "t-update-175",
-        text: expect.stringContaining("FORK_MANIFEST.md"),
+      expect(f.api).toHaveBeenCalledWith("/api/fork-update/apply", expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"targetVersion\":\"0.1.175\""),
       }));
+      // Stays right in Announcements — never opens or switches to a chat thread!
+      expect(f.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "showChat" }));
+      expect(f.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "send" }));
+      expect(document.querySelector("[data-fork-job='running']")?.textContent).toContain("Updating v0.1.173 → v0.1.175 in background");
+      expect(document.querySelector("[data-fork-job-step]")?.textContent).toContain("Merging upstream v0.1.175");
+
+      await click(document.querySelector("[data-fork-job-cancel]"));
+      expect(f.api).toHaveBeenCalledWith("/api/fork-update/cancel", expect.objectContaining({ method: "POST" }));
+      expect(document.querySelector("[data-fork-job='cancelled']")).not.toBeNull();
     });
   });
 });
