@@ -205,6 +205,7 @@ describe("forkUpdateRoutes", () => {
       startTurn: async (_botId, _threadId, _prompt, onSettled) => { settleFn = onSettled; },
       interruptThread: async () => {},
       restartServer: restarted,
+      evaluateGuard: () => ({ blocked: false, reason: null, inTradingWindow: false, hasOpenTrade: false, nyTimeEt: "Sat 12:00 ET" }),
     });
 
     const applyReq = makeCtx(FORK_UPDATE_APPLY_PATH, "POST", "owner");
@@ -286,5 +287,34 @@ describe("forkUpdateRoutes", () => {
     expect(hiddenAtEmit, "task must already pass isForkUpdateTask before the first store emit").toBe(true);
     expect(archivedAtEmit, "task must already have archivedAt before the first store emit").toBe(true);
     expect(patched[0]?.routineRunId).toMatch(/^fork-update-/);
+  });
+
+  it("blocks apply and restart with 409 when the trading guard is active", async () => {
+    const dataDir = makeTempDir("fork-guard-data-");
+    configureForkUpdateRunner({
+      dataDir,
+      findBot: () => ({ id: "chief-1", name: "Head of Desk" }),
+      createHiddenTask: () => ({ threadId: "t-1" }),
+      deleteHiddenTask: () => {},
+      messagesFor: () => [],
+      startTurn: async () => {},
+      interruptThread: async () => {},
+      evaluateGuard: () => ({
+        blocked: true,
+        reason: "NY AM trading window active (Mon 10:00 ET, 09:15–12:15 ET) — updates & restarts are paused until 12:15 ET.",
+        inTradingWindow: true,
+        hasOpenTrade: false,
+        nyTimeEt: "Mon 10:00 ET",
+      }),
+    });
+
+    const applyReq = makeCtx(FORK_UPDATE_APPLY_PATH, "POST", "owner");
+    applyReq.ctx.readBody = vi.fn(async () => ({ targetVersion: "0.1.199" }));
+    await forkUpdateRoutes(applyReq.ctx);
+    expect(applyReq.out.status).toBe(409);
+
+    const restartReq = makeCtx(FORK_UPDATE_RESTART_PATH, "POST", "owner");
+    await forkUpdateRoutes(restartReq.ctx);
+    expect(restartReq.out.status).toBe(409);
   });
 });

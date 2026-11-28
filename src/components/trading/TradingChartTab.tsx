@@ -10,7 +10,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { RefreshCw, Scan } from "lucide-react";
-import type { LwcCandle, TradingChartData, TradingPosition } from "./types.ts";
+import type { LwcCandle, TradingChartData, TradingOpenOrder, TradingPosition } from "./types.ts";
 
 interface Props {
   chart: TradingChartData | null;
@@ -19,6 +19,7 @@ interface Props {
   onTfChange: (tf: number) => void;
   onRefresh: () => void;
   positions: TradingPosition[];
+  openOrders?: TradingOpenOrder[];
 }
 
 const NQ_HEIGHT_KEY = "omb-trading-nq-height";
@@ -79,7 +80,7 @@ const EXTRA_LEVELS: Array<{ key: string; label: string; color: string; style: Li
   { key: "Data L", label: "Data L", color: "rgba(245, 158, 11, 0.36)", style: LineStyle.SparseDotted, axis: false },
 ];
 
-export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, positions }: Props) {
+export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, positions, openOrders = [] }: Props) {
   const nqHostRef = useRef<HTMLDivElement | null>(null);
   const esHostRef = useRef<HTMLDivElement | null>(null);
   const nqLegendRef = useRef<HTMLDivElement | null>(null);
@@ -91,6 +92,7 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
   const [showAllLevels, setShowAllLevels] = useState(false);
   const [showRbs, setShowRbs] = useState(false);
   const [showSmt, setShowSmt] = useState(true);
+  const [showTrades, setShowTrades] = useState(true);
   const [fittedAll, setFittedAll] = useState(false);
   const [nqHeight, setNqHeight] = useState<number>(() => readStoredHeight(NQ_HEIGHT_KEY, 180, 760, NQ_DEFAULT_HEIGHT));
   const [esHeight, setEsHeight] = useState<number>(() => readStoredHeight(ES_HEIGHT_KEY, 96, 420, ES_DEFAULT_HEIGHT));
@@ -288,12 +290,88 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
       }
     }
 
-    for (const pos of positions) {
-      nqSeries.createPriceLine({ price: pos.avg_price, color: "#e5e5e7", lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `Entry ${pos.size}` });
-      nqSeries.createPriceLine({ price: pos.sl_price, color: BEAR, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "SL" });
-      nqSeries.createPriceLine({ price: pos.tp_price, color: BULL, lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: "TP" });
-      nqSeries.createPriceLine({ price: pos.be_trigger, color: "rgba(226, 179, 76, 0.55)", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false, title: "BE +27" });
-      nqSeries.createPriceLine({ price: pos.lock_1r_trigger, color: "rgba(125, 185, 255, 0.55)", lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false, title: "+1R +36" });
+    if (showTrades) {
+      for (const pos of positions) {
+        const lastPx = pos.last_price ?? lastNqBar?.close ?? pos.avg_price;
+        const beArmed = pos.side === "long" ? lastPx >= pos.be_trigger : lastPx <= pos.be_trigger;
+        const lock1rArmed = pos.side === "long" ? lastPx >= pos.lock_1r_trigger : lastPx <= pos.lock_1r_trigger;
+        const pnlTag = `${pos.unrealized_usd >= 0 ? "+" : ""}$${pos.unrealized_usd.toFixed(0)}`;
+        const entryColor = pos.unrealized_usd >= 0 ? "#26c485" : "#e54d5d";
+        const sideLabel = pos.side === "long" ? "LONG" : "SHORT";
+        nqSeries.createPriceLine({
+          price: pos.avg_price,
+          color: entryColor,
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: `${sideLabel} ${pos.size} · ${pnlTag}`,
+        });
+        nqSeries.createPriceLine({
+          price: pos.sl_price,
+          color: BEAR,
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "SL -18pt",
+        });
+        nqSeries.createPriceLine({
+          price: pos.tp_price,
+          color: BULL,
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "TP +45pt (2.5R)",
+        });
+        nqSeries.createPriceLine({
+          price: pos.be_trigger,
+          color: beArmed ? "#26c485" : "rgba(226, 179, 76, 0.72)",
+          lineWidth: beArmed ? 2 : 1,
+          lineStyle: beArmed ? LineStyle.Solid : LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: beArmed ? "BE+1 ARMED" : "BE+1 (+27)",
+        });
+        nqSeries.createPriceLine({
+          price: pos.lock_1r_trigger,
+          color: lock1rArmed ? "#38bdf8" : "rgba(125, 185, 255, 0.72)",
+          lineWidth: lock1rArmed ? 2 : 1,
+          lineStyle: lock1rArmed ? LineStyle.Solid : LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: lock1rArmed ? "+1R ARMED" : "+1R (+36)",
+        });
+      }
+
+      if (positions.length === 0) {
+        for (const ord of openOrders) {
+          const entryPx = ord.limitPrice ?? ord.stopPrice;
+          if (typeof entryPx !== "number" || entryPx <= 0) continue;
+          const mult = ord.side === "long" ? 1 : -1;
+          const label = ord.side === "long" ? "LIMIT LONG" : "LIMIT SHORT";
+          nqSeries.createPriceLine({
+            price: entryPx,
+            color: "rgba(250, 204, 21, 0.9)",
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `${label} ${ord.size}`,
+          });
+          nqSeries.createPriceLine({
+            price: Number((entryPx - mult * 18).toFixed(2)),
+            color: "rgba(229, 77, 93, 0.5)",
+            lineWidth: 1,
+            lineStyle: LineStyle.Dotted,
+            axisLabelVisible: false,
+            title: "Plan SL",
+          });
+          nqSeries.createPriceLine({
+            price: Number((entryPx + mult * 45).toFixed(2)),
+            color: "rgba(38, 196, 133, 0.5)",
+            lineWidth: 1,
+            lineStyle: LineStyle.Dotted,
+            axisLabelVisible: false,
+            title: "Plan TP",
+          });
+        }
+      }
     }
 
     applyRecentRange(nqChart, nqData.length);
@@ -415,7 +493,7 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
       nqChart.remove();
       esChart?.remove();
     };
-  }, [chart, showLevels, showAllLevels, showRbs, showSmt, positions, applyRecentRange]);
+  }, [chart, showLevels, showAllLevels, showRbs, showSmt, showTrades, positions, openOrders, applyRecentRange]);
 
   const ko = chart?.ko_10am;
   const okRbs = (chart?.rbs ?? []).filter((r) => r.el_status === "OK");
@@ -461,6 +539,9 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
             </button>
             <button type="button" onClick={() => setShowSmt((v) => !v)} className={pillCls(showSmt)}>
               SMT
+            </button>
+            <button type="button" onClick={() => setShowTrades((v) => !v)} className={pillCls(showTrades)}>
+              Trades
             </button>
           </div>
           <button

@@ -57,6 +57,14 @@ function invalidateTradingCache(): void {
   cache.clear();
 }
 
+/** Fast non-blocking peek at the latest cached /api/trading/state snapshot for safety guards. */
+export function hasCachedOpenTrade(): boolean {
+  const hit = cache.get("state");
+  if (!hit || Date.now() - hit.at > 60_000) return false;
+  const data = hit.data as { positions?: unknown[]; open_orders?: unknown[] } | null;
+  return Boolean((data?.positions?.length ?? 0) > 0 || (data?.open_orders?.length ?? 0) > 0);
+}
+
 export const tradingRoutes: RouteHandler = async (ctx: RouteContext) => {
   const { path, method, url, res, json, readBody } = ctx;
   if (!path.startsWith("/api/trading")) return PASS;
@@ -88,7 +96,14 @@ export const tradingRoutes: RouteHandler = async (ctx: RouteContext) => {
     }
 
     if (method === "POST" && path === "/api/trading/flatten") {
-      const data = await runBridge(["flatten"], 30_000);
+      let allAccounts = false;
+      try {
+        const body = (await readBody(ctx.req)) as { all_accounts?: unknown } | null;
+        allAccounts = body?.all_accounts === true;
+      } catch {
+        allAccounts = false;
+      }
+      const data = await runBridge(allAccounts ? ["flatten", "--all-accounts"] : ["flatten"], 30_000);
       invalidateTradingCache();
       json(res, 200, data);
       return;

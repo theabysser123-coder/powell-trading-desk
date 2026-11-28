@@ -18,6 +18,14 @@ export interface ForkUpdateJobView {
   needsRestart: boolean;
 }
 
+export interface TradingGuardStatus {
+  blocked: boolean;
+  reason: string | null;
+  inTradingWindow: boolean;
+  hasOpenTrade: boolean;
+  nyTimeEt: string;
+}
+
 export interface ForkUpdateStatus {
   isFork: boolean;
   installedVersion: string;
@@ -33,6 +41,7 @@ export interface ForkUpdateStatus {
   manifestPath: string;
   checkedAt: number;
   canBackgroundUpdate?: boolean;
+  tradingGuard?: TradingGuardStatus | null;
   job?: ForkUpdateJobView | null;
 }
 

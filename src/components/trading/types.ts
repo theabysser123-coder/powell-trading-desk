@@ -69,6 +69,28 @@ export interface ApprovalCardItem {
   reason: string;
 }
 
+export interface MultiAccountEntry {
+  id: number;
+  name: string;
+  balance: number;
+  net_profit: number;
+  mll_cushion: number;
+  unrealized_usd: number;
+  open_positions: number;
+  open_orders: number;
+  is_practice: boolean;
+  is_primary: boolean;
+}
+
+export interface MultiAccountSummary {
+  active_live_count: number;
+  target_xfa_slots: number;
+  total_balance: number;
+  total_unrealized_usd: number;
+  total_open_positions: number;
+  accounts: MultiAccountEntry[];
+}
+
 export interface TradingState {
   ok: boolean;
   timestamp_et: string;
@@ -107,6 +129,7 @@ export interface TradingState {
     today_net: number;
     all_accounts: Array<{ id: number; name: string; balance: number; is_practice: boolean }>;
   };
+  multi_account?: MultiAccountSummary;
   market: {
     mnq_contract: string;
     es_contract: string;

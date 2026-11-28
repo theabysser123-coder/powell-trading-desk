@@ -19,6 +19,7 @@ import { activityPreview, botEngine } from "@/lib/failed-turn";
 import { computerStepLine } from "@/lib/computer-step";
 import type { Bot, useStore } from "@/state/store";
 import { BotAvatar } from "../Avatar";
+import { CombineRoadmapPanel, MultiAccountStrip } from "./TradingDeskRoadmap.tsx";
 import type { MorningPlan, TradingJournalsData, TradingState } from "./types.ts";
 
 export type DeskNodeId =
@@ -321,6 +322,8 @@ export function RiskModuleCard({
           <span>{trading ? `${trading.desk.att1_mnq}/${trading.desk.att2_mnq} MNQ · 18→45pt` : "12/6 MNQ · 18→45pt"}</span>
         </div>
 
+        <MultiAccountStrip multi={trading?.multi_account} />
+
         {openPositions.length > 0 && (
           <div className="space-y-1.5">
             {openPositions.map((pos) => {
@@ -435,7 +438,13 @@ export function RiskModuleCard({
             title={confirmFlatten ? "Click again to market-flatten all positions & orders" : "Emergency Flatten (2-click confirm)"}
           >
             <ShieldAlert size={12} />
-            {busyAction === "flatten" ? "Flattening…" : confirmFlatten ? "Confirm?" : "Flatten"}
+            {busyAction === "flatten"
+              ? "Flattening…"
+              : confirmFlatten
+                ? "Confirm?"
+                : (trading?.multi_account?.active_live_count ?? 0) > 1
+                  ? `Flatten All (${trading!.multi_account!.active_live_count})`
+                  : "Flatten"}
           </button>
         </div>
       </div>
@@ -530,12 +539,14 @@ export function NewsModuleCard({
 
 export function JournalModuleCard({
   journals,
+  trading,
   style,
   highlighted,
   onDragStart,
   onHover,
 }: {
   journals: TradingJournalsData | null;
+  trading?: TradingState | null;
   style: CSSProperties;
   highlighted: boolean;
   onDragStart: (e: ReactPointerEvent<HTMLElement>) => void;
@@ -616,6 +627,8 @@ export function JournalModuleCard({
             <div className="rounded-lg bg-card/80 py-1"><div className="text-ink-tertiary">Payout #1</div><div className="font-semibold text-sky-400">86.4%</div></div>
           </div>
         </div>
+
+        <CombineRoadmapPanel trading={trading ?? null} liveJournals={liveJournals} />
 
         <div className="flex flex-1 flex-col rounded-xl border border-hairline/35 bg-inset/70 p-3">
           <div className="flex items-center justify-between gap-2">

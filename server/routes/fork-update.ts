@@ -16,6 +16,8 @@ import { writeFileAtomic } from "../atomic.ts";
 import { DATA_DIR } from "../config.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
 import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
+import { hasCachedOpenTrade } from "./trading.ts";
+import { evaluateTradingGuard, type TradingGuardStatus } from "./trading-guard.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,6 +69,7 @@ export interface ForkUpdateStatus {
   manifestPath: string;
   checkedAt: number;
   canBackgroundUpdate: boolean;
+  tradingGuard: TradingGuardStatus;
   job: ForkUpdateJobView | null;
 }
 
@@ -93,6 +96,7 @@ export interface ForkUpdateRunner {
   ): Promise<unknown>;
   interruptThread(botId: string, threadId: string, reason: string): Promise<void>;
   restartServer?: () => void;
+  evaluateGuard?: () => TradingGuardStatus;
 }
 
 interface InternalJob extends ForkUpdateJobView {
@@ -232,9 +236,14 @@ function defaultRestartServer(): void {
 let runner: ForkUpdateRunner | null = null;
 let currentJob: InternalJob | null = null;
 let jobLoadedFromDisk = false;
-let cachedStatus: { at: number; value: Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate"> } | null = null;
-let inflightStatus: Promise<Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate">> | null = null;
-let inflightRefresh: Promise<Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate">> | null = null;
+let cachedStatus: { at: number; value: Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate" | "tradingGuard"> } | null = null;
+let inflightStatus: Promise<Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate" | "tradingGuard">> | null = null;
+let inflightRefresh: Promise<Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate" | "tradingGuard">> | null = null;
+
+function currentTradingGuard(): TradingGuardStatus {
+  if (runner?.evaluateGuard) return runner.evaluateGuard();
+  return evaluateTradingGuard({ cachedOpenTrade: hasCachedOpenTrade() });
+}
 
 function jobFilePath(): string {
   return join(runner?.dataDir ?? DATA_DIR, "providers", "fork-update-job.json");
@@ -413,7 +422,7 @@ export function wireForkUpdateRunner(deps: {
   });
 }
 
-async function inspectRepoStatus(repoRoot = DEFAULT_REPO_ROOT): Promise<Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate">> {
+async function inspectRepoStatus(repoRoot = DEFAULT_REPO_ROOT): Promise<Omit<ForkUpdateStatus, "job" | "canBackgroundUpdate" | "tradingGuard">> {
   const installedVersion = readInstalledVersion(repoRoot);
   const manifestPath = join(repoRoot, "FORK_MANIFEST.md");
   const checkedAt = Date.now();
@@ -471,6 +480,7 @@ export async function inspectForkStatus(repoRoot = DEFAULT_REPO_ROOT): Promise<F
   return {
     ...base,
     canBackgroundUpdate: Boolean(runner && runner.findBot()),
+    tradingGuard: currentTradingGuard(),
     job: toPublicJob(currentJob),
   };
 }
@@ -479,11 +489,11 @@ async function getStatus(repoRoot = DEFAULT_REPO_ROOT, force = false): Promise<F
   loadJobFromDisk(repoRoot);
   const now = Date.now();
   if (!force && cachedStatus && now - cachedStatus.at < STATUS_CACHE_TTL_MS) {
-    return { ...cachedStatus.value, canBackgroundUpdate: Boolean(runner && runner.findBot()), job: toPublicJob(currentJob) };
+    return { ...cachedStatus.value, canBackgroundUpdate: Boolean(runner && runner.findBot()), tradingGuard: currentTradingGuard(), job: toPublicJob(currentJob) };
   }
   if (!force && inflightStatus) {
     const value = await inflightStatus;
-    return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), job: toPublicJob(currentJob) };
+    return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), tradingGuard: currentTradingGuard(), job: toPublicJob(currentJob) };
   }
 
   const task = inspectRepoStatus(repoRoot)
@@ -496,14 +506,14 @@ async function getStatus(repoRoot = DEFAULT_REPO_ROOT, force = false): Promise<F
     });
   inflightStatus = task;
   const value = await task;
-  return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), job: toPublicJob(currentJob) };
+  return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), tradingGuard: currentTradingGuard(), job: toPublicJob(currentJob) };
 }
 
 async function refreshUpstream(repoRoot = DEFAULT_REPO_ROOT): Promise<ForkUpdateStatus> {
   loadJobFromDisk(repoRoot);
   if (inflightRefresh) {
     const value = await inflightRefresh;
-    return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), job: toPublicJob(currentJob) };
+    return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), tradingGuard: currentTradingGuard(), job: toPublicJob(currentJob) };
   }
 
   const task = (async () => {
@@ -522,7 +532,7 @@ async function refreshUpstream(repoRoot = DEFAULT_REPO_ROOT): Promise<ForkUpdate
 
   inflightRefresh = task;
   const value = await task;
-  return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), job: toPublicJob(currentJob) };
+  return { ...value, canBackgroundUpdate: Boolean(runner && runner.findBot()), tradingGuard: currentTradingGuard(), job: toPublicJob(currentJob) };
 }
 
 async function startBackgroundUpdate(targetVersion: string, highlights: readonly string[]): Promise<{ ok: true; job: ForkUpdateJobView } | { ok: false; status: number; error: string }> {
@@ -713,7 +723,11 @@ export const forkUpdateRoutes: RouteHandler = async (ctx: RouteContext) => {
     }
 
     if (path === FORK_UPDATE_APPLY_PATH) {
-      const body = (await readBody(ctx.req)) as { targetVersion?: unknown; highlights?: unknown } | null;
+      const body = (await readBody(ctx.req)) as { targetVersion?: unknown; highlights?: unknown; force?: unknown } | null;
+      const guard = currentTradingGuard();
+      if (guard.blocked && (guard.hasOpenTrade || body?.force !== true)) {
+        return json(res, 409, { error: guard.reason ?? "Trading guard is active.", tradingGuard: guard });
+      }
       const targetVersion = typeof body?.targetVersion === "string" ? body.targetVersion : "";
       const highlights = Array.isArray(body?.highlights)
         ? body.highlights.filter((line): line is string => typeof line === "string")
@@ -740,6 +754,17 @@ export const forkUpdateRoutes: RouteHandler = async (ctx: RouteContext) => {
     if (path === FORK_UPDATE_RESTART_PATH) {
       if (currentJob?.status === "running") {
         return json(res, 409, { error: "Wait for the background update to finish before restarting." });
+      }
+      let force = false;
+      try {
+        const body = (await readBody(ctx.req)) as { force?: unknown } | null;
+        force = body?.force === true;
+      } catch {
+        force = false;
+      }
+      const guard = currentTradingGuard();
+      if (guard.blocked && (guard.hasOpenTrade || !force)) {
+        return json(res, 409, { error: guard.reason ?? "Trading guard is active.", tradingGuard: guard });
       }
       if (currentJob) {
         currentJob.needsRestart = false;

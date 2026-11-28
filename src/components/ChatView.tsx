@@ -3,7 +3,7 @@ import { useAdvancedMode } from "@/lib/interface-mode";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { ThreadLinkContext } from "@/components/ThreadLinkMenu";
 import { useShowThreads } from "@/lib/thread-preferences";
-import { AlertTriangle, CandlestickChart, ChevronRight, Monitor, RefreshCw, Square, Webhook } from "lucide-react";
+import { AlertTriangle, ChevronRight, Monitor, RefreshCw, Square, Webhook } from "lucide-react"; import { DeskStatusPill } from "@/components/trading/DeskStatusPill";
 import { WorkingDots } from "@/components/WorkingIndicator";
 import { ChatBusyContext, CopyButton, MESSAGE_ROW, MessageActions, messageActionClass, ReplyAction } from "@/components/MessageActions";
 import { ReactAction, ReactionChips } from "@/components/Reactions";
@@ -1015,20 +1015,7 @@ export const ChatView = memo(function ChatView({ bot: profile, inForkPanel = fal
             onJump={(messageId) => dispatch({ type: "focusMessage", threadId: bot.threadId, messageId })}
             onUnpin={remoteClient ? undefined : () => dispatch({ type: "updateTask", botId: bot.id, threadId: bot.threadId, patch: { pinnedMessageId: "" } })}
           />
-          {!phoneMenu && <button
-            type="button"
-            onClick={() => dispatch({ type: "toggleTradingDesk" })}
-            className={cn(
-              "relative flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium", ELEVATED_FLOAT, ELEVATED_HOVER,
-              state.tradingDeskOpen ? "text-ink" : "text-ink-secondary hover:text-ink",
-            )}
-            title="Toggle Trading Desk"
-            aria-label="Toggle Trading Desk"
-          >
-            <CandlestickChart size={15} />
-            <span className="@max-4xl/chathead:hidden">Desk</span>
-            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
-          </button>}
+          {!phoneMenu && <DeskStatusPill open={state.tradingDeskOpen} onToggle={() => dispatch({ type: "toggleTradingDesk" })} />}
           {!phoneMenu && !isPlaceId(bot.id) && <button
             data-tour="computer"
             onClick={(event) => { if (!state.computerOpen) rememberComputerPanelOpen({ botId: bot.id, opener: event.currentTarget, tabs: event.detail === 0 }); dispatch({ type: "toggleComputer" }); }}

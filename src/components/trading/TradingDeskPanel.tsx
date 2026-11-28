@@ -97,10 +97,16 @@ export function TradingDeskPanel() {
   const handleFlatten = async () => {
     setBusyAction("flatten");
     setBanner(null);
+    const allAccounts = (tradingState?.multi_account?.active_live_count ?? 0) > 1;
     try {
-      const r = await fetch("/api/trading/flatten", { method: "POST" });
-      const d = (await r.json()) as { ok?: boolean; cancelled_orders?: number; error?: string };
-      setBanner(d.ok ? `Flattened cleanly (${d.cancelled_orders ?? 0} orders cancelled).` : `Flatten error: ${d.error}`);
+      const r = await fetch("/api/trading/flatten", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all_accounts: allAccounts }),
+      });
+      const d = (await r.json()) as { ok?: boolean; cancelled_orders?: number; account_ids?: number[]; error?: string };
+      const scope = allAccounts && d.account_ids?.length ? ` across ${d.account_ids.length} accounts` : "";
+      setBanner(d.ok ? `Flattened cleanly${scope} (${d.cancelled_orders ?? 0} orders cancelled).` : `Flatten error: ${d.error}`);
       await fetchState(true);
     } finally {
       setBusyAction(null);

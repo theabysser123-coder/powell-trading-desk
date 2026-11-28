@@ -10,12 +10,14 @@ Whenever merging an upstream OpenMausBot release into this fork, **every customi
 
 ### A. Live Trading Desk Canvas & TopstepX Bridge
 - **Standalone files (must remain intact):**
-  - `server/routes/trading.ts` — REST bridge to `/home/nebula/.gemini/antigravity/scratch/powell-backtest/trading_bridge.py` with in-flight request deduplication and generation-safe cache invalidation.
-  - `src/components/trading/TradingDeskPanel.tsx` — Pure Canvas shell with adaptive live polling (12s/15s flat, 5s/5s when in a live position) and live unrealized P&L pill.
+  - `server/routes/trading.ts` — REST bridge to `/home/nebula/.gemini/antigravity/scratch/powell-backtest/trading_bridge.py` with in-flight request deduplication, generation-safe cache invalidation, cached open-trade safety peek, and multi-account `Flatten All` (`all_accounts`).
+  - `server/routes/trading-guard.ts` (+ `.test.ts`) — Trading-hours (`Mon–Fri 09:15–12:15 ET`) & live-position/resting-order safety guard blocking fork updates and server restarts mid-trade.
+  - `src/components/trading/TradingDeskPanel.tsx` — Pure Canvas shell with adaptive live polling (12s/15s flat, 5s/5s when in a live position), multi-account Flatten All, and live unrealized P&L pill.
   - `src/components/trading/TradingDeskCanvas.tsx` — Full-screen visual bot-to-system canvas (Head of Desk, Risk & Prop Guardian, Powell v7 Trader, Journal & Replay Analyst wired to Risk, Volatility/News, Live Tape + Morning Plan strip, and 80d Benchmark & Journals), fullscreen tape toggle, drag/pan/zoom.
-  - `src/components/trading/TradingDeskNodes.tsx` — 2-click `Flatten` guard (`Flatten` → `Confirm?` 4s auto-reset), MLL + Personal DLL (`$750`) bars, live open position + Defense Ladder (`BE+1`, `+1R`) readout, journal history pager (`‹ / ›`).
-  - `src/components/trading/TradingChartTab.tsx` — Live MNQ + synced ES SMT candlestick chart with `10:00 KO` & `4H/1H/15m Rejection Blocks`.
-  - `src/components/trading/types.ts` — Shared trading payload TypeScript interfaces.
+  - `src/components/trading/TradingDeskNodes.tsx` & `src/components/trading/TradingDeskRoadmap.tsx` — 2-click `Flatten` / `Flatten All` guard, MLL + Personal DLL (`$750`) bars, live open position + Defense Ladder (`BE+1`, `+1R`) readout, Combine → 5× XFA roadmap + 55% consistency tracker, multi-account fleet strip, and journal history pager (`‹ / ›`).
+  - `src/components/trading/TradingChartTab.tsx` — Live MNQ + synced ES SMT candlestick chart with `10:00 KO`, `4H/1H/15m Rejection Blocks`, live Entry/SL/TP/armed Defense Ladder lines, and resting limit-order bracket preview.
+  - `src/components/trading/DeskStatusPill.tsx` & `src/lib/desk-alerts.ts` (+ `.test.ts`) — Live chat-bar MNQ / open-position status pill beside Desk + toggleable Web Audio chimes for fill, BE+1 / +1R ladder arming, and trade close.
+  - `src/components/trading/types.ts` — Shared trading payload TypeScript interfaces (including multi-account summary).
   - `start-desk.sh` — Local desk launcher script.
 - **Core wiring (preserve during merges):**
   - `server/routes/table.ts` — `tradingRoutes` registered in `ROUTES`.

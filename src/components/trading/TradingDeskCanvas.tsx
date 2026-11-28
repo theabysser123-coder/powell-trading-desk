@@ -501,6 +501,7 @@ export function TradingDeskCanvas({
                 onTfChange={onTfChange}
                 onRefresh={onRefresh}
                 positions={openPositions}
+                openOrders={trading?.open_orders ?? []}
               />
             </div>
           ) : (
@@ -512,6 +513,7 @@ export function TradingDeskCanvas({
 
         <JournalModuleCard
           journals={journals}
+          trading={trading}
           style={nodeStyle("mod:journal")}
           highlighted={highlightedSet.ids.has("mod:journal")}
           onDragStart={(e) => startNodeDrag(e, "mod:journal")}
@@ -560,6 +562,7 @@ export function TradingDeskCanvas({
               onTfChange={onTfChange}
               onRefresh={onRefresh}
               positions={openPositions}
+              openOrders={trading?.open_orders ?? []}
             />
           </div>
         </div>

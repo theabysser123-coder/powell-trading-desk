@@ -341,7 +341,9 @@ function ForkUpdateBanner({
   const matchingRelease = newestVersion && latestRelease?.version === newestVersion ? latestRelease : null;
   const job = status.job ?? null;
   const running = job?.status === "running" || startingVersion !== null;
-  const canLaunch = status.canBackgroundUpdate !== false;
+  const guard = status.tradingGuard ?? null;
+  const guardBlocked = Boolean(guard?.blocked);
+  const canLaunch = status.canBackgroundUpdate !== false && !guardBlocked;
 
   return (
     <section
@@ -371,7 +373,17 @@ function ForkUpdateBanner({
                 Uncommitted edits
               </span>
             )}
+            {guardBlocked && (
+              <span data-trading-guard-badge className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[12px] font-medium text-amber-300">
+                {guard?.hasOpenTrade ? "Live Trade Lock" : "NY AM Guard"}
+              </span>
+            )}
           </div>
+          {guardBlocked && guard?.reason && (
+            <p data-trading-guard-reason className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[12px] text-amber-200">
+              {guard.reason}
+            </p>
+          )}
           <p className="mt-1.5 flex items-start gap-1.5 text-[12.5px] leading-[18px] text-ink-secondary">
             <ShieldCheck size={14} className="mt-0.5 shrink-0 text-ink-tertiary" aria-hidden />
             <span>
@@ -555,7 +567,8 @@ export function AnnouncementsPage() {
 
   const installedVersion = forkStatus?.isFork ? forkStatus.installedVersion : desktopAppVersion();
   const busyVersion = isJobRunning ? activeJob.targetVersion : startingVersion;
-  const forkUpdateAction = forkStatus?.isFork && forkStatus.canBackgroundUpdate !== false
+  const guardBlocked = Boolean(forkStatus?.tradingGuard?.blocked);
+  const forkUpdateAction = forkStatus?.isFork && forkStatus.canBackgroundUpdate !== false && !guardBlocked
     ? { busyVersion, onUpdate: (release: ReleaseEntry) => void handleForkUpdate(release.version, release) }
     : null;
 
