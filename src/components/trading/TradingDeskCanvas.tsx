@@ -218,11 +218,28 @@ export function TradingDeskCanvas({
     const padY = 48;
     const contentW = Math.max(400, maxX - minX + padX * 2);
     const contentH = Math.max(300, maxY - minY + padY * 2);
-    const scale = Math.max(MIN_SCALE, Math.min(1.02, Math.min(rect.width / contentW, rect.height / contentH)));
+    const rawScale = Math.max(MIN_SCALE, Math.min(1.0, Math.min(rect.width / contentW, rect.height / contentH)));
+    const scale = rawScale >= 0.94 ? 1 : rawScale;
     const x = Math.round((rect.width - (maxX - minX) * scale) / 2 - minX * scale);
     const y = Math.round((rect.height - (maxY - minY) * scale) / 2 - minY * scale);
     setView({ x, y, scale });
   }, [nodes]);
+
+  const zoomToOne = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) {
+      setView((current) => ({ ...current, scale: 1 }));
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    setView((current) => {
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const wx = (cx - current.x) / current.scale;
+      const wy = (cy - current.y) / current.scale;
+      return { scale: 1, x: Math.round(cx - wx), y: Math.round(cy - wy) };
+    });
+  }, []);
 
   useLayoutEffect(() => {
     if (fittedRef.current) return;
@@ -233,7 +250,8 @@ export function TradingDeskCanvas({
   const zoomBy = useCallback((factor: number, clientX?: number, clientY?: number) => {
     const el = viewportRef.current;
     setView((current) => {
-      const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Number((current.scale * factor).toFixed(3))));
+      const rawNext = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Number((current.scale * factor).toFixed(3))));
+      const nextScale = Math.abs(rawNext - 1) <= 0.03 ? 1 : rawNext;
       if (!el || clientX === undefined || clientY === undefined) {
         const cx = (el?.clientWidth ?? 1200) / 2;
         const cy = (el?.clientHeight ?? 760) / 2;
@@ -349,7 +367,14 @@ export function TradingDeskCanvas({
         }
       `}</style>
 
-      <div className="absolute inset-0 origin-top-left" style={{ transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})` }}>
+      <div
+        className="absolute inset-0 origin-top-left"
+        style={{
+          transform: Math.abs(view.scale - 1) < 0.005
+            ? `translate(${Math.round(view.x)}px, ${Math.round(view.y)}px)`
+            : `translate(${Math.round(view.x)}px, ${Math.round(view.y)}px) scale(${view.scale})`,
+        }}
+      >
         <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
           {wires.map((wire) => {
             const from = nodes[wire.from];
@@ -458,7 +483,7 @@ export function TradingDeskCanvas({
           onMouseEnter={() => setHovered("mod:chart")}
           onMouseLeave={() => setHovered((c) => (c === "mod:chart" ? null : c))}
           className={cn(
-            "absolute flex flex-col overflow-hidden rounded-2xl border bg-[#121216]/95 shadow-xl backdrop-blur-md",
+            "absolute flex flex-col overflow-hidden rounded-2xl border bg-[#121216] shadow-xl",
             highlightedSet.ids.has("mod:chart") ? "border-emerald-400/70" : "border-hairline/55",
           )}
         >
@@ -524,7 +549,7 @@ export function TradingDeskCanvas({
       {chartExpanded && (
         <div
           data-desk-hud
-          className="absolute inset-3 z-30 flex flex-col overflow-hidden rounded-2xl border border-emerald-400/50 bg-[#121216]/98 shadow-2xl backdrop-blur-md"
+          className="absolute inset-3 z-30 flex flex-col overflow-hidden rounded-2xl border border-emerald-400/50 bg-[#121216] shadow-2xl"
         >
           <div className="flex items-center justify-between border-b border-hairline/40 px-4 py-2.5">
             <div className="flex items-center gap-2">
@@ -575,7 +600,17 @@ export function TradingDeskCanvas({
         <button type="button" onClick={() => zoomBy(1 / 1.15)} title="Zoom out" aria-label="Zoom out" className="flex size-8 items-center justify-center rounded-lg hover:bg-control hover:text-ink">
           <Minus size={14} />
         </button>
-        <span className="min-w-[44px] text-center font-mono text-[11px] text-ink">{Math.round(view.scale * 100)}%</span>
+        <button
+          type="button"
+          onClick={zoomToOne}
+          title="Snap to crisp 100% (1:1 native pixels)"
+          className={cn(
+            "min-w-[44px] rounded-lg px-1.5 py-1 text-center font-mono text-[11px] transition hover:bg-control",
+            Math.abs(view.scale - 1) < 0.005 ? "text-emerald-300" : "text-ink",
+          )}
+        >
+          {Math.round(view.scale * 100)}%
+        </button>
         <button type="button" onClick={() => zoomBy(1.15)} title="Zoom in" aria-label="Zoom in" className="flex size-8 items-center justify-center rounded-lg hover:bg-control hover:text-ink">
           <Plus size={14} />
         </button>

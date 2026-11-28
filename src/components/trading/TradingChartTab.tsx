@@ -170,9 +170,9 @@ export function TradingChartTab({ chart, loading, tf, onTfChange, onRefresh, pos
       height: el.clientHeight || fallbackHeight,
       layout: {
         background: { type: ColorType.Solid, color: CHART_BG },
-        textColor: "#7c7c82",
-        fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
-        fontSize: 10.5,
+        textColor: "#8e8e96",
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        fontSize: 11,
         attributionLogo: false,
       },
       grid: {
