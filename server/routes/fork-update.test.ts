@@ -20,6 +20,7 @@ import {
   pickLatestSemverTag,
   resetForkUpdateCacheForTest,
   shortRemoteName,
+  wireForkUpdateRunner,
 } from "./fork-update.ts";
 import { PASS, type RouteContext } from "./table.ts";
 
@@ -249,5 +250,41 @@ describe("forkUpdateRoutes", () => {
     const cancelReq = makeCtx(FORK_UPDATE_CANCEL_PATH, "POST", "owner");
     await forkUpdateRoutes(cancelReq.ctx);
     expect(cancelReq.out.status).toBe(200);
+  });
+
+  it("wireForkUpdateRunner stamps routineRunId & archivedAt in beforeShown before store emit fires", async () => {
+    const dataDir = makeTempDir("fork-wire-data-");
+    let hiddenAtEmit = false;
+    let archivedAtEmit = false;
+    const patched: Array<{ routineRunId?: string; archivedAt?: number }> = [];
+
+    wireForkUpdateRunner({
+      dataDir,
+      store: {
+        bots: [{ id: "chief-1", name: "Head of Desk", chiefOfStaff: true, tasks: [] }],
+        createTask: (_botId, _title, _activate, _p, _o, _a, _m, _c, beforeShown) => {
+          const task: { threadId: string; routineRunId?: string; archivedAt?: number } = { threadId: "t-hidden-1" };
+          beforeShown?.(task);
+          // Simulate Store.emit() running immediately after beforeShown, before patchTask.
+          hiddenAtEmit = isForkUpdateTask(task);
+          archivedAtEmit = typeof task.archivedAt === "number";
+          return task;
+        },
+        patchTask: (_botId, _threadId, patch) => { patched.push(patch); },
+        messagesFor: () => [],
+      },
+      deleteTasks: () => {},
+      startTurn: async () => {},
+      interruptDirectThread: async () => {},
+    });
+
+    const applyReq = makeCtx(FORK_UPDATE_APPLY_PATH, "POST", "owner");
+    applyReq.ctx.readBody = vi.fn(async () => ({ targetVersion: "0.1.199" }));
+    await forkUpdateRoutes(applyReq.ctx);
+
+    expect(applyReq.out.status).toBe(202);
+    expect(hiddenAtEmit, "task must already pass isForkUpdateTask before the first store emit").toBe(true);
+    expect(archivedAtEmit, "task must already have archivedAt before the first store emit").toBe(true);
+    expect(patched[0]?.routineRunId).toMatch(/^fork-update-/);
   });
 });

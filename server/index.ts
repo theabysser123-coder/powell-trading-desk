@@ -4490,7 +4490,7 @@ store.onChange((change) => {
       break;
     case "bot": {
       const bot = store.bot(change.botId);
-      if (bot) botFrames.send(bot, change.threadId, pageIfThreadChanged(bot.id, bot.threadId));
+      if (bot && !(change.threadId && isForkUpdateTask(store.taskByThread(bot.id, change.threadId)))) botFrames.send(bot, change.threadId, pageIfThreadChanged(bot.id, bot.threadId));
       if (bot) for (const group of store.groups.filter((candidate) => candidate.memberIds.includes(bot.id))) settleRoomFloor(group);
       break;
     }

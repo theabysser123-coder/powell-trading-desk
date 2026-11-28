@@ -343,7 +343,17 @@ export function wireForkUpdateRunner(deps: {
   dataDir: string;
   store: {
     bots: ReadonlyArray<{ id: string; name: string; hidden?: boolean; chiefOfStaff?: boolean; tasks?: ReadonlyArray<{ threadId: string; routineRunId?: string }> }>;
-    createTask(botId: string, title?: string, activate?: boolean): { threadId: string } | null;
+    createTask(
+      botId: string,
+      title?: string,
+      activate?: boolean,
+      projectId?: string,
+      openedBy?: never,
+      approvalMode?: never,
+      modelSelection?: never,
+      cwd?: string,
+      beforeShown?: (task: { threadId: string; routineRunId?: string; archivedAt?: number }) => void,
+    ): { threadId: string } | null;
     patchTask(botId: string, threadId: string, patch: { routineRunId?: string; archivedAt?: number }): unknown;
     messagesFor(threadId: string): readonly HiddenTurnMessage[];
   };
@@ -363,9 +373,25 @@ export function wireForkUpdateRunner(deps: {
       return chief ? { id: chief.id, name: chief.name } : null;
     },
     createHiddenTask: (botId, routineRunId) => {
-      const task = deps.store.createTask(botId, "Fork update", false);
+      const archivedAt = Date.now();
+      // Stamp routineRunId + archivedAt in beforeShown so the very first store emit already
+      // classifies this task as hidden (isForkUpdateTask === true) and never leaks it over SSE.
+      const task = deps.store.createTask(
+        botId,
+        "Fork update",
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (created) => {
+          created.routineRunId = routineRunId;
+          created.archivedAt = archivedAt;
+        },
+      );
       if (!task) return null;
-      deps.store.patchTask(botId, task.threadId, { routineRunId, archivedAt: Date.now() });
+      deps.store.patchTask(botId, task.threadId, { routineRunId, archivedAt });
       return { threadId: task.threadId };
     },
     deleteHiddenTask: (botId, threadId) => {
